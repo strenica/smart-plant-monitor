@@ -140,12 +140,32 @@ what you frame in the browser is what gets analysed.
 picks the fastest by default, which is a centre crop of the sensor — the preview
 looks zoomed in. `[2304, 1296]` uses the whole sensor.
 
+### Framing controls
+
+The page has live controls for rotation, zoom and capture size. Adjust them
+while watching, then press **Save and apply**: that writes `config/camera.json`
+and shuts the server down, freeing the camera for the scanner. Tick "disable
+preview after saving" to set `preview: false` at the same time.
+
+To preview again afterwards, either set `"preview": true` or pass `--force`:
+
+```bash
+.venv/bin/python tools/preview.py --force
+```
+
 **Only one process can hold the camera.** Stop the preview before running
 `leafs.py --camera`:
 
 ```bash
 fuser -k 8080/tcp
 ```
+
+### Does a smaller image save power?
+
+Only a little. The sensor still runs at 2304×1296 and the model input is always
+320×320, so inference cost is unchanged. A smaller capture saves ISP work, JPEG
+encoding and memory bandwidth — real, but small next to the cost of *how often*
+you capture. The frequency is the lever that matters.
 
 ## Status
 

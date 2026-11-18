@@ -56,6 +56,39 @@ class CameraSettings:
             preview_fps=int(data.get("preview_fps", 15)),
         )
 
+    def to_dict(self) -> dict:
+        """Serialise for the config file, keeping the explanatory keys."""
+        return {
+            "_comment": (
+                "Shared by tools/preview.py and pi/vision/leafs.py, so what you "
+                "frame in the browser is what the scanner analyses."
+            ),
+            "size": list(self.size),
+            "sensor_mode": list(self.sensor_mode),
+            "_sensor_mode_note": (
+                "2304x1296 uses the whole sensor. The default 1536x864 mode is a "
+                "centre crop and looks zoomed in."
+            ),
+            "rotation": self.rotation,
+            "_rotation_note": "0, 90, 180 or 270 degrees clockwise.",
+            "zoom": self.zoom,
+            "_zoom_note": (
+                "1.0 is the full frame. 2.0 crops to the middle half and scales "
+                "back up."
+            ),
+            "preview": self.preview,
+            "preview_port": self.preview_port,
+            "preview_fps": self.preview_fps,
+        }
+
+    @classmethod
+    def write(cls, settings: "CameraSettings", path: str | Path | None = None) -> Path:
+        """Write settings back to the config file. Returns the path written."""
+        config_path = Path(path) if path else DEFAULT_PATH
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps(settings.to_dict(), indent=2) + "\n")
+        return config_path
+
 
 def apply_transform(frame: np.ndarray, rotation: int = 0, zoom: float = 1.0) -> np.ndarray:
     """Rotate and digitally zoom a frame, keeping the output size unchanged.
