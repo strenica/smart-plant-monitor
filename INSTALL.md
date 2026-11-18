@@ -140,6 +140,7 @@ and then run everything there:
 
 ```bash
 # once, on the Pi, with internet
+sudo apt install cmake ninja-build
 git clone --depth 1 --branch v5.5.6 --recursive \
   https://github.com/espressif/esp-idf.git ~/esp/esp-idf
 ~/esp/esp-idf/install.sh esp32
@@ -147,6 +148,19 @@ git clone --depth 1 --branch v5.5.6 --recursive \
 # every time after that
 cd ~/plant
 ./install.sh v1_duty --local
+```
+
+`cmake` and `ninja-build` are not installed by default, and without them
+`idf.py` fails with `"cmake" must be available on the PATH`.
+
+The toolchain has to be fetched **on the Pi**, because it is aarch64 while a
+laptop is x86_64. The source tree, however, is portable: copying it over the
+local link is far faster than cloning it on the Pi, whose internet is NATed
+through the laptop and manages roughly 25 MB/min against 3 MB/s over the link.
+
+```bash
+rsync -a ~/esp/esp-idf/ admin@10.42.0.15:~/esp/esp-idf/
+ssh admin@10.42.0.15 '~/esp/esp-idf/install.sh esp32'
 ```
 
 `--local` skips SSH and rsync entirely: it builds here, flashes `/dev/ttyUSB0`
