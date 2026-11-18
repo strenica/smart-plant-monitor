@@ -139,8 +139,10 @@ if [ "$FW_ONLY" -eq 0 ]; then
   }
 
   if [ "$SERVICE" -eq 1 ]; then
-    echo "== systemd unit: plant-$VARIANT"
-    UNIT="plant-$VARIANT.service"
+    # One fixed unit name, so switching variants replaces the monitor instead
+    # of leaving the previous one enabled and fighting for the camera.
+    echo "== systemd unit: plant-monitor ($VARIANT)"
+    UNIT="plant-monitor.service"
     printf '%s\n' \
       "[Unit]" \
       "Description=Smart plant monitor ($VARIANT)" \

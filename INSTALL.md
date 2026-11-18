@@ -187,12 +187,15 @@ EN is that the Pi comes up and the preview is just there — that needs somethin
 to run at boot, and systemd is the standard way on Debian.
 
 The units are optional. Without them you start the supervisor by hand after
-every boot. With them:
+every boot. With them, `plant-monitor.service` runs the supervisor and
+`plant-dashboard.service` runs the web UI. The monitor unit keeps a fixed name
+whatever variant is installed, so switching variants replaces it rather than
+leaving the old one enabled and fighting for the camera.
 
 ```bash
-sudo systemctl status plant-v1_duty
+sudo systemctl status plant-monitor
 sudo systemctl status plant-dashboard
-journalctl -u plant-v1_duty -f
+journalctl -u plant-monitor -f
 ```
 
 `install.sh` only installs a unit when you pass `--service` or `--dashboard`.
