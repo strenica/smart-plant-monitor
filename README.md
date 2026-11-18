@@ -84,6 +84,36 @@ The rule number is the buzz count: rule 2 buzzes twice. A rule buzzes when it
 *enters* violation, then re-alerts once per cooldown (30 min by default) while
 it stays violated. Clearing a condition is silent.
 
+## Vision
+
+`pi/vision/leafs.py` runs the U2-Net saliency model to isolate leaf-like
+foreground, then applies hand-written colour rules.
+
+```bash
+cd ~/plant/pi/vision
+~/plant/.venv/bin/python leafs.py
+~/plant/.venv/bin/python leafs.py --image images/pepper_bacterial_spot.jpg
+```
+
+The split between learned and hand-written stages is the point:
+
+| Stage | Kind |
+|---|---|
+| Saliency map | learned (U2-Net, 7 outputs, first one used) |
+| Otsu threshold, morphology, component filtering | hand-written |
+| HSV colour fractions, health label | hand-written |
+
+So `healthy-ish` is a colour heuristic, not a diagnosis. On the bundled
+samples it reports `healthy-ish` for both the healthy pepper and the bacterial
+spot one, because the spots are a small fraction of leaf area. That is a
+limitation of the rule, not a bug in the model.
+
+**`u2netp.onnx` is not in this repo** — its provenance and licence are not
+recorded in the source project, so it is not redistributed. Unzip
+`leafs-starter.zip` and copy it into `pi/vision/`.
+
+Sample photographs: Mohanty, Hughes and Salathe / PlantVillage, CC BY-SA 3.0.
+
 ## Status
 
 Working and verified on hardware: both sensors, the buzzer, the Pi wake pulse,
