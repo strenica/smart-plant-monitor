@@ -119,16 +119,22 @@ system `python3`. Upgrade the system Python and `export.sh` fails with
 ```
 
 That builds the firmware with `variants/v1_duty/variant.h`, flashes it on the Pi
-at 115200 baud, and syncs the Pi code.
+at 115200 baud, syncs the Pi code, installs both systemd units and starts the
+monitor. One command, nothing else to remember.
 
 ```bash
-./install.sh --list               # show the four variants
-./install.sh v1_duty --fw-only    # firmware only
-./install.sh v1_duty --pi-only    # Pi code only
-./install.sh v1_duty --no-flash   # build, do not flash
-./install.sh v1_duty --service    # also install a systemd unit
-./install.sh v1_duty --dashboard  # also install the web dashboard
+./install.sh --list                  # show the four variants
+./install.sh v1_duty --fw-only       # firmware only
+./install.sh v1_duty --pi-only       # Pi code only
+./install.sh v1_duty --no-flash      # build, do not flash
+./install.sh v1_duty --no-service    # skip the monitoring unit
+./install.sh v1_duty --no-dashboard  # skip the dashboard unit
 ```
+
+Flashing cold-boots the ESP32, which is the same thing as pressing EN, so the
+install finishes with the camera preview open on port 8080. Frame the shot and
+press **save and apply**, or leave it and it gives up after five minutes and
+starts monitoring.
 
 Each `variants/<name>/` folder also works on its own:
 `./variants/v1_duty/install.sh`.
@@ -147,8 +153,12 @@ git clone --depth 1 --branch v5.5.6 --recursive \
 
 # every time after that
 cd ~/plant
-./install.sh v1_duty --local
+./install.sh v1_duty
 ```
+
+`--local` is not needed: the installer resolves the target address and notices
+when it is one of this machine's own, then skips SSH and rsync. Passing
+`--local` explicitly still works.
 
 `cmake` and `ninja-build` are not installed by default, and without them
 `idf.py` fails with `"cmake" must be available on the PATH`.
@@ -213,14 +223,10 @@ forgotten preview cannot leave the plant unwatched.
 
 ## Dashboard
 
-```bash
-./install.sh v1_duty --dashboard
-```
-
-Serves on port 8081: latest sensor values, the event log, and an editor for
-`configuration.txt` that validates before writing. It shows the last frame the
-scanner analysed rather than a live stream, because only one process can hold
-the camera and the monitoring loop needs it.
+`./install.sh <variant>` installs it. Serves on port 8081: latest sensor values,
+the event log, and an editor for `configuration.txt` that validates before
+writing. It shows the last frame the scanner analysed rather than a live stream,
+because only one process can hold the camera and the monitoring loop needs it.
 
 Recent events are listed newest first. How much history is kept is set by
 `log_max_lines` in `configuration.txt` (default 50000, `0` keeps everything);
@@ -249,10 +255,10 @@ sudo systemctl status plant-dashboard
 journalctl -u plant-monitor -f
 ```
 
-`install.sh` only installs a unit when you pass `--service` or `--dashboard`.
-It needs sudo, which over SSH has no terminal, so it works unattended only if
-the Pi has passwordless sudo. Otherwise it prints the two commands for you to
-run.
+`install.sh` installs both units by default. It needs sudo, which over SSH has
+no terminal, so it works unattended only if the Pi has passwordless sudo.
+Otherwise it prints the commands for you to run. Run the installer on the Pi
+itself and sudo prompts normally.
 
 ## Troubleshooting
 

@@ -83,23 +83,31 @@ tools/             flash, preview and live-view helpers
 ## Install a variant
 
 One command builds the firmware with that variant's knobs, flashes it on the Pi
-at 115200 baud, and syncs the Pi code:
+at 115200 baud, syncs the Pi code, installs both systemd units and starts the
+monitor:
 
 ```bash
 ./install.sh v1_duty
 ```
 
 ```bash
-./install.sh --list               # show the four variants
-./install.sh v1_duty --fw-only    # firmware only
-./install.sh v1_duty --pi-only    # Pi code only
-./install.sh v1_duty --no-flash   # build, do not flash
-./install.sh v1_duty --service    # also install a systemd unit
-./install.sh v1_duty --local      # build and flash on the Pi itself
-./install.sh v1_duty --pi user@host   # target a different Pi
+./install.sh --list                  # show the four variants
+./install.sh v1_duty --fw-only       # firmware only
+./install.sh v1_duty --pi-only       # Pi code only
+./install.sh v1_duty --no-flash      # build, do not flash
+./install.sh v1_duty --no-service    # skip the monitoring unit
+./install.sh v1_duty --no-dashboard  # skip the dashboard unit
+./install.sh v1_duty --local         # build and flash on the Pi itself
+./install.sh v1_duty --pi user@host  # target a different Pi
 ```
 
+Run it on the Pi and it notices by itself: no SSH, no rsync, no copying.
 `--local` needs ESP-IDF on the Pi; see [INSTALL.md](INSTALL.md).
+
+Flashing cold-boots the ESP32, which is the same thing as pressing EN, so the
+install ends with the camera preview open on port 8080. Frame the shot and press
+**save and apply**, or leave it alone and it gives up after five minutes and
+starts monitoring.
 
 Each `variants/<name>/` folder also works on its own:
 
@@ -155,14 +163,11 @@ together, so it is when the supervisor hands the ESP32 the intervals from
 
 ## Dashboard
 
-```bash
-./install.sh v1_duty --dashboard
-```
-
-installs a small web UI on port 8081: the latest sensor values, the event log,
-and an editor for `configuration.txt` that validates before saving. It shows the
-last frame the scanner analysed rather than a live stream, because only one
-process can hold the camera and the monitoring loop needs it.
+`./install.sh <variant>` installs a small web UI on port 8081: the latest sensor
+values, the event log, and an editor for `configuration.txt` that validates
+before saving. It shows the last frame the scanner analysed rather than a live
+stream, because only one process can hold the camera and the monitoring loop
+needs it.
 
 Saving restarts `plant-monitor`, because the variant loops read the config once
 at startup and a saved file otherwise does nothing until the next reboot. The

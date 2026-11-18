@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Install one rung of the variant ladder.
+# Install one rung of the variant ladder. One command does the lot: firmware,
+# Pi code, the monitoring service and the dashboard.
 #
-#   ./install.sh v1_duty              build, flash the ESP32, deploy the Pi code
-#   ./install.sh v1_duty --fw-only    firmware only
-#   ./install.sh v1_duty --pi-only    Pi code only
-#   ./install.sh v1_duty --no-flash   build the firmware but do not flash it
-#   ./install.sh v1_duty --service    also install a systemd unit
-#   ./install.sh v1_duty --dashboard  also install the web dashboard on boot
-#   ./install.sh --list               show the variants
-#   ./install.sh v1_duty --local      build and flash on this machine (the Pi)
-#   ./install.sh v1_duty --pi user@host   target a different Pi
+#   ./install.sh v1_duty                 everything
+#   ./install.sh v1_duty --fw-only       firmware only
+#   ./install.sh v1_duty --pi-only       Pi code only
+#   ./install.sh v1_duty --no-flash      build the firmware but do not flash it
+#   ./install.sh v1_duty --no-service    skip the monitoring unit
+#   ./install.sh v1_duty --no-dashboard  skip the dashboard unit
+#   ./install.sh --list                  show the variants
+#   ./install.sh v1_duty --local         build and flash on this machine (the Pi)
+#   ./install.sh v1_duty --pi user@host  target a different Pi
+#
+# Run it on the Pi and it notices: no SSH, no rsync, no copying.
 #
 # The ESP32 is wired to the Pi, not to this laptop, so the build happens here
 # and only the binaries travel. esptool runs on the Pi at 115200 baud with
@@ -39,7 +42,7 @@ BUILD="$ROOT/firmware/build"
 VARIANTS=(v0_baseline v1_duty v2_adaptive v3_deepsleep)
 
 usage() {
-  sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 list_variants() {
@@ -54,8 +57,8 @@ VARIANT=""
 FW_ONLY=0
 PI_ONLY=0
 NO_FLASH=0
-SERVICE=0
-DASHBOARD=0
+SERVICE=1
+DASHBOARD=1
 NEED_PI=0
 LOCAL=0
 
@@ -66,7 +69,9 @@ for arg in "$@"; do
     --pi-only)  PI_ONLY=1 ;;
     --no-flash) NO_FLASH=1 ;;
     --service)  SERVICE=1 ;;
-    --dashboard) DASHBOARD=1 ;;
+    --no-service)   SERVICE=0 ;;
+    --dashboard)    DASHBOARD=1 ;;
+    --no-dashboard) DASHBOARD=0 ;;
     --pi)       NEED_PI=1 ;;
     --local)    LOCAL=1 ;;
     -h|--help)  usage; exit 0 ;;
@@ -75,7 +80,6 @@ for arg in "$@"; do
         if [ "$NEED_PI" -eq 1 ]; then
             PI="$arg"
             NEED_PI=0
-LOCAL=0
         else
             VARIANT="$arg"
         fi
@@ -99,6 +103,21 @@ if [ -z "$PI" ] && [ -f "$TARGET_FILE" ]; then
   PI="$(cat "$TARGET_FILE")"
 fi
 PI="${PI:-admin@10.42.0.15}"
+
+# Running on the Pi itself? Then there is nothing to copy and no SSH to make.
+# Comparing the target against this machine's own addresses means the same
+# command works from the laptop and from the Pi's console.
+if [ "$LOCAL" -eq 0 ]; then
+  target_host="${PI#*@}"
+  target_addr="$(getent hosts "$target_host" 2>/dev/null | awk '{print $1; exit}')" ||
+    target_addr=""
+  if [ -n "$target_addr" ] &&
+     ip -o addr show 2>/dev/null | awk '{print $4}' | cut -d/ -f1 |
+       grep -qx "$target_addr"; then
+    LOCAL=1
+    echo "== $target_host is this machine, so building and flashing here"
+  fi
+fi
 
 VDIR="$ROOT/variants/$VARIANT"
 if [ ! -d "$VDIR" ]; then
@@ -255,6 +274,22 @@ if [ "$FW_ONLY" -eq 0 ]; then
       > "/tmp/$UNIT"
     install_unit "$UNIT" "--now"
     echo "   dashboard on http://<pi-address>:8081/"
+  fi
+
+  # Restart last, once every unit is in place. On V3 this is the moment the
+  # node starts behaving like V3: the supervisor asks the ESP32 for its mode,
+  # and the Pi halts after the first capture.
+  if [ "$SERVICE" -eq 1 ]; then
+    echo "== starting plant-monitor"
+    if [ "$LOCAL" -eq 1 ]; then
+      sudo systemctl restart plant-monitor.service
+    else
+      ssh "$PI" "sudo -n systemctl restart plant-monitor.service" 2>/dev/null ||
+        echo "   restart it yourself: ssh $PI 'sudo systemctl restart plant-monitor'"
+    fi
+    if [ "$VARIANT" = "v3_deepsleep" ]; then
+      echo "   V3 halts the Pi after the first capture. Press EN to wake it."
+    fi
   fi
 fi
 
