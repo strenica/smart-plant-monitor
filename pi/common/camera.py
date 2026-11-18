@@ -108,14 +108,26 @@ def apply_transform(
     zoom: float = 1.0,
     crop: tuple[float, float, float, float] | None = None,
 ) -> np.ndarray:
-    """Crop, zoom and rotate a frame.
+    """Rotate, crop and zoom a frame.
 
-    Order matters. The crop runs first and does **not** scale back up, so a
-    half-width crop really does produce a half-width image — that is the only
-    size change that saves encoding work. Zoom then crops further and scales
-    back to the cropped size, so it changes framing without changing output
-    size. Rotation is last.
+    Order matters, and it is chosen to match what the user sees. Rotation runs
+    first so the crop coordinates refer to the upright image on screen; cropping
+    before rotation would make a selection land somewhere else whenever the
+    rotation is not zero.
+
+    The crop does **not** scale back up, so a half-width crop really does
+    produce a half-width image — that is the only size change that saves
+    encoding work. Zoom then crops further and scales back to the cropped size,
+    so it changes framing without changing output size.
     """
+    rotation %= 360
+    if rotation == 90:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    elif rotation == 180:
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
+    elif rotation == 270:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
     if crop is not None:
         x, y, w, h = crop
         if (x, y, w, h) != (0.0, 0.0, 1.0, 1.0):
@@ -133,14 +145,6 @@ def apply_transform(
         y0 = (height - crop_h) // 2
         frame = frame[y0 : y0 + crop_h, x0 : x0 + crop_w]
         frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
-
-    rotation %= 360
-    if rotation == 90:
-        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-    elif rotation == 180:
-        frame = cv2.rotate(frame, cv2.ROTATE_180)
-    elif rotation == 270:
-        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
     return frame
 

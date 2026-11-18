@@ -256,11 +256,23 @@ document.getElementById('applysize').onclick = () => {
 
 document.getElementById('clearcrop').onclick = () => push({crop: [0,0,1,1]});
 
+// The displayed frame size is known from the settings: the crop scales the
+// capture size, and a 90/270 rotation swaps the axes. Deriving it here is more
+// reliable than img.naturalWidth, which lags on an MJPEG stream.
+function displayedSize() {
+  const [sw, sh] = state.size;
+  const [, , cw, ch] = state.crop;
+  let w = Math.max(1, Math.round(sw * cw));
+  let h = Math.max(1, Math.round(sh * ch));
+  if (state.rotation === 90 || state.rotation === 270) { const t = w; w = h; h = t; }
+  return [w, h];
+}
+
 // The image is letterboxed by object-fit:contain, so the element box is not the
 // picture. Work out where the picture actually is before mapping mouse coords.
 function imageRect() {
   const r = img.getBoundingClientRect();
-  const nw = img.naturalWidth || 1, nh = img.naturalHeight || 1;
+  const [nw, nh] = displayedSize();
   const scale = Math.min(r.width / nw, r.height / nh);
   const w = nw * scale, h = nh * scale;
   return { left: r.left + (r.width - w)/2, top: r.top + (r.height - h)/2,
@@ -300,11 +312,19 @@ window.addEventListener('mouseup', async e => {
   if (x1 - x0 < 12 || y1 - y0 < 12) return;   // a click, not a drag
 
   const clamp = v => Math.max(0, Math.min(1, v));
+  // The picture on screen is already cropped, so the drag is a fraction of the
+  // current crop, not of the full frame. Compose the two, otherwise a second
+  // selection lands somewhere other than where it was drawn.
+  const [cx, cy, cw, ch] = state.crop;
+  const fx = clamp((x0 - r.left) / r.width);
+  const fy = clamp((y0 - r.top) / r.height);
+  const fw = clamp((x1 - x0) / r.width);
+  const fh = clamp((y1 - y0) / r.height);
   await push({ crop: [
-    clamp((x0 - r.left) / r.width),
-    clamp((y0 - r.top) / r.height),
-    clamp((x1 - x0) / r.width),
-    clamp((y1 - y0) / r.height),
+    clamp(cx + fx * cw),
+    clamp(cy + fy * ch),
+    clamp(fw * cw),
+    clamp(fh * ch),
   ]});
 });
 
