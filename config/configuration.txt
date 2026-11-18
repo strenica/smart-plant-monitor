@@ -1,0 +1,16 @@
+# Rules for the plant monitor. One rule per line.
+#
+# Format:  <number>: <field> <operator> <threshold>
+# The number is the buzz count: rule 2 buzzes twice.
+#
+# Fields:    air_humidity (%), air_temperature (C), soil_humidity (0-1000)
+# Operators: <  >  <=  >=
+#
+# These thresholds are placeholders. Calibrate them for your species and your
+# probe: run tools/live.py --csv, note the raw adc in dry soil and again in a
+# glass of water, then set SOIL_ADC_DRY and SOIL_ADC_WET in
+# firmware/main/config.h to match.
+
+1: air_humidity > 50
+2: air_temperature < 15
+3: soil_humidity < 300

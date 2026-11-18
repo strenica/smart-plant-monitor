@@ -1,0 +1,96 @@
+# Smart Plant Monitor
+
+An ESP32 sensor node and a Raspberry Pi 4 vision node monitoring a plant's
+health, built as a ladder of four energy-management variants so the energy cost
+of each technique can be measured rather than guessed.
+
+Course project for FRI, 2026.
+
+## Hardware
+
+| Part | Notes |
+|---|---|
+| ESP32-D0WD-V3 | 4 MB flash, dual core + LP core |
+| Raspberry Pi 4 Model B | 4 GB, Debian 13 (trixie) |
+| DHT11 | temperature and humidity |
+| DFRobot SEN0114 | **resistive** soil moisture, two prongs |
+| Grove Buzzer | passive piezo, driven at its 2300 Hz resonance |
+| Raspberry Pi Camera Module 3 | Sony IMX708, 12 MP |
+| Monsoon HVPM | power measurement, 5 kHz |
+
+## How the two boards are connected
+
+| ESP32 | Pi | Purpose |
+|---|---|---|
+| D25 (GPIO25) | pin 5 (GPIO3) | wake, open-drain, 250 ms low pulse |
+| GND | pin 6 | common ground |
+| TX2 (GPIO17) | pin 10 (RXD) | ESP32 → Pi |
+| RX2 (GPIO16) | pin 8 (TXD) | Pi → ESP32 |
+| USB | USB | power, and the UART0 console |
+
+Never touch Pi pins 2 and 4 — they are 5 V.
+
+## Layout
+
+```
+firmware/          ESP-IDF project for the ESP32
+  main/
+    config.h       pin map and soil calibration
+    sensors.c      DHT11 + ADC, with the soil probe's power gate
+    dht11.c        bit-bang one-wire driver (ESP-IDF has no official one)
+    buzzer.c       LEDC PWM at 2300 Hz
+    pi_link.c      wake pulse + UART2
+pi/                Raspberry Pi side
+  common/config.py configuration.txt and reading parsers
+  common/rules.py  rule evaluation, edge triggering, cooldown
+  common/logger.py events_log.txt writer
+  v0_baseline.py   the naive variant
+config/            configuration.txt
+tools/             flash and live-view helpers
+```
+
+## Build and flash
+
+The ESP32 is wired to the Pi, so the build happens on a workstation and only
+the binaries travel:
+
+```bash
+export IDF_PYTHON_ENV_PATH="$HOME/.espressif/python_env/idf5.5_py3.12_env"
+./tools/flash_pi.sh
+```
+
+This board will not flash above 115200 baud — the stub flasher fails to start.
+
+## Run
+
+On the Pi:
+
+```bash
+cd ~/plant/pi
+.venv/bin/python v0_baseline.py --dry-run
+```
+
+`--dry-run` evaluates and logs without buzzing. Drop it to drive the buzzer.
+
+## configuration.txt
+
+```
+1: air_humidity > 50
+2: air_temperature < 15
+3: soil_humidity < 300
+```
+
+The rule number is the buzz count: rule 2 buzzes twice. A rule buzzes when it
+*enters* violation, then re-alerts once per cooldown (30 min by default) while
+it stays violated. Clearing a condition is silent.
+
+## Status
+
+Working and verified on hardware: both sensors, the buzzer, the Pi wake pulse,
+the UART2 link in both directions, the camera, and the V0 baseline with its
+rule engine and event log.
+
+Not started: the vision pipeline, and variants V1–V3.
+
+See `PLAN.md` for the variant ladder, the measurement methodology, and the
+hardware gotchas that cost time to find.
