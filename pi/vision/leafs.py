@@ -232,14 +232,16 @@ def annotate(image: np.ndarray, masks: list[np.ndarray], results: list[dict]) ->
     just a word, and there is no way to tell a real problem from the model
     having picked the wrong region.
     """
-    lines = [
-        f"Leaf {r['number']}: {r['condition']}  "
-        f"G={r['fractions']['green']:.2f} "
-        f"Y={r['fractions']['yellow']:.2f} "
-        f"B={r['fractions']['brown']:.2f}  "
-        f"H={r['hsv'][0]:.0f} S={r['hsv'][1]:.0f} V={r['hsv'][2]:.0f}"
-        for r in results
-    ]
+    lines = []
+    for r in results:
+        fractions = r["fractions"]
+        lines.append(f"Leaf {r['number']}: {r['condition']}")
+        lines.append(
+            f"G={fractions['green']:.2f} "
+            f"Y={fractions['yellow']:.2f} "
+            f"B={fractions['brown']:.2f}  "
+            f"H={r['hsv'][0]:.0f} S={r['hsv'][1]:.0f} V={r['hsv'][2]:.0f}"
+        )
     annotated, _ = draw_overlay(image, masks, lines)
     return annotated
 

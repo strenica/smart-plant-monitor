@@ -293,8 +293,23 @@ what you frame in the browser is what gets analysed.
 | `sensor_mode` | `[2304, 1296]` uses the whole sensor |
 | `rotation` | 0, 90, 180 or 270 |
 | `zoom` | 1.0 is the full frame, 2.0 crops to the middle half |
+| `crop` | region of interest as `[x, y, w, h]` in 0..1 fractions |
+| `autofocus` | continuous AF; off leaves the lens at infinity |
+| `awb` | `auto` or `off`; `off` locks `colour_gains` |
+| `colour_gains` | `[red, blue]` multipliers, used when `awb` is `off` |
 | `preview` | set `false` to disable the server |
 | `preview_port`, `preview_fps` | server settings |
+
+### Leaf check
+
+The **leaf check** button opens a panel that freezes the current frame, runs the
+saliency model on it once, and then lets you drag the hue bands and watch the
+verdict change. Only the colour rule re-runs per slider move — about 13 ms — so
+it is genuinely live rather than a re-analysis of a new frame each time.
+
+The panel shows the annotated frame, the fractions, the verdict, and the
+measured H, S and V. When a band looks right, copy the numbers into
+`config/vision.json` (or the dashboard's vision page) to make it permanent.
 
 **`sensor_mode` matters.** The Camera Module 3 offers three modes and picamera2
 picks the fastest by default, which is a centre crop of the sensor — the preview

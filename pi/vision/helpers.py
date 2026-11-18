@@ -61,11 +61,19 @@ def draw_overlay(img, masks, lines):
             cv2.putText(out, f"Leaf {i}", (x, max(20,y-8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
         idx[m==255] = i
     # legend box
+    # The box used to be a fixed 620 px wide, which overflows a cropped frame
+    # and cuts the verdict off mid-word. Fit it to the image and shrink the
+    # text to match.
     x0,y0 = 10,22
-    cv2.rectangle(out, (x0-8,y0-20), (x0+620, y0-20+22*len(lines)+24), (0,0,0), -1)
+    width = out.shape[1]
+    scale = 0.6 if width >= 640 else 0.4
+    thick = 2 if width >= 640 else 1
+    step = 22 if width >= 640 else 16
+    box_w = min(620, width - x0 - 2)
+    cv2.rectangle(out, (x0-8,y0-20), (x0+box_w, y0-20+step*len(lines)+24), (0,0,0), -1)
     y = y0
     for s in lines:
-        cv2.putText(out, s, (x0,y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
-        y+=22
+        cv2.putText(out, s, (x0,y), cv2.FONT_HERSHEY_SIMPLEX, scale, (255,255,255), thick)
+        y+=step
     return out, idx
 

@@ -52,6 +52,41 @@ from common.camera import CameraSettings, apply_transform, open_camera  # noqa: 
 
 SIZE_CHOICES = [(640, 480), (800, 600), (1024, 768), (1280, 720), (1280, 960), (1920, 1080)]
 
+_leafs_module = None
+
+
+def load_leafs():
+    """Import pi/vision/leafs.py on first use.
+
+    It pulls in onnxruntime and loads a 4.5 MB model, which is slow and
+    pointless if nobody opens the leaf panel.
+    """
+    global _leafs_module
+    if _leafs_module is None:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "pi" / "vision"))
+        import leafs as module
+
+        _leafs_module = module
+    return _leafs_module
+
+
+def bands_from_body(body: dict, fallback: dict) -> dict:
+    """Merge the sliders' hue ranges over the current bands, ignoring junk."""
+    bands = {}
+    for name, default in fallback.items():
+        entry = body.get(name) or {}
+        hue = entry.get("hue", default["hue"])
+        try:
+            low, high = int(hue[0]), int(hue[1])
+        except (TypeError, ValueError, IndexError):
+            low, high = default["hue"]
+        low = max(0, min(179, low))
+        high = max(low, min(179, high))
+        band = dict(default)
+        band["hue"] = (low, high)
+        bands[name] = band
+    return bands
+
 
 class LiveState:
     """Settings shared between the HTTP handler and the capture thread."""
@@ -62,6 +97,12 @@ class LiveState:
         self.reconfigure = False     # set when `size` changes
         self.stop = threading.Event()
         self.frame: bytes | None = None
+        # The last transformed frame as an array, so the leaf panel can analyse
+        # exactly what the scanner would see rather than a second capture.
+        self.array = None
+        # Frozen frame plus its masks, so dragging a slider re-runs only the
+        # colour rule and not the model.
+        self.leaf: dict | None = None
         # Touched by every request. The idle watchdog uses it to give up when
         # nobody is looking, so a forgotten preview does not hold the camera.
         self.last_request = time.monotonic()
@@ -127,6 +168,7 @@ def capture_loop(state: LiveState, quality: int) -> None:
             if ok:
                 with state.lock:
                     state.frame = buffer.tobytes()
+                    state.array = array
 
             remaining = (1.0 / fps) - (time.monotonic() - started)
             if remaining > 0:
@@ -165,6 +207,22 @@ PAGE = """<!doctype html>
   #status { color:#8c8; min-width:150px }
   #cropinfo { color:#7cf; min-width:70px }
   label { display:flex; gap:6px; align-items:center }
+  #leafpanel { position:fixed; top:0; right:0; width:340px; height:100%;
+               background:#181818; border-left:1px solid #333; padding:12px;
+               overflow:auto; display:none; z-index:20; box-sizing:border-box }
+  #leafpanel.on { display:block }
+  #leafpanel .row { display:flex; gap:8px; align-items:center; margin-bottom:10px }
+  #leafpanel img { width:100%; border-radius:6px; border:1px solid #333;
+                   margin-bottom:10px; display:block }
+  #leafpanel .band { display:grid; grid-template-columns:50px 1fr 1fr 54px;
+                     gap:6px; align-items:center; margin-bottom:6px }
+  #leafpanel .band input[type=range] { width:100% }
+  #leafpanel .band .name { color:#aaa }
+  #leafpanel .band .val { color:#7cf; font-variant-numeric:tabular-nums;
+                          font-size:12px }
+  #leafpanel .leaf { background:#202020; border:1px solid #333; border-radius:6px;
+                     padding:8px; margin-bottom:8px; font-size:13px }
+  .muted { color:#777 }
 </style></head>
 <body>
 <header>
@@ -195,9 +253,22 @@ PAGE = """<!doctype html>
 
   <button id="save">Save and apply</button>
   <span id="status"></span>
+  <button id="leafopen">leaf check</button>
 </header>
 <main><img id="stream" src="/stream" alt="camera stream"></main>
 <div id="sel"></div>
+
+<aside id="leafpanel">
+  <div class="row">
+    <b>leaf check</b>
+    <button id="leaffreeze">freeze frame</button>
+    <button id="leafclose">close</button>
+  </div>
+  <div id="leafmsg" class="muted">freeze a frame to measure it</div>
+  <img id="leafimg" alt="leaf regions" style="display:none">
+  <div id="leafbands"></div>
+  <div id="leafout"></div>
+</aside>
 
 <script>
 const SIZES = __SIZES__;
@@ -344,6 +415,85 @@ document.getElementById('save').onclick = async () => {
 };
 
 paint();
+
+// --- leaf check -------------------------------------------------------------
+// The model runs once on a frozen frame; the sliders only re-run the colour
+// rule, which is a few milliseconds, so dragging feels instant.
+const leafPanel = document.getElementById('leafpanel');
+const leafBands = document.getElementById('leafbands');
+const leafOut = document.getElementById('leafout');
+const leafMsg = document.getElementById('leafmsg');
+const leafImg = document.getElementById('leafimg');
+let leafBandsState = null;
+let leafTimer = null;
+
+document.getElementById('leafopen').onclick = () => leafPanel.classList.add('on');
+document.getElementById('leafclose').onclick = () => leafPanel.classList.remove('on');
+
+function leafSliders(bands) {
+  leafBandsState = bands;
+  leafBands.innerHTML = '';
+  for (const [name, [lo, hi]] of Object.entries(bands)) {
+    const row = document.createElement('div');
+    row.className = 'band';
+    row.innerHTML =
+      '<span class="name">' + name + '</span>' +
+      '<input type="range" min="0" max="179" value="' + lo + '" data-band="' + name + '" data-end="0">' +
+      '<input type="range" min="0" max="179" value="' + hi + '" data-band="' + name + '" data-end="1">' +
+      '<span class="val" id="v-' + name + '">' + lo + '\u2013' + hi + '</span>';
+    leafBands.appendChild(row);
+  }
+  leafBands.querySelectorAll('input[type=range]').forEach(el => {
+    el.addEventListener('input', () => {
+      const name = el.dataset.band;
+      const inputs = leafBands.querySelectorAll('input[data-band="' + name + '"]');
+      let lo = Number(inputs[0].value), hi = Number(inputs[1].value);
+      if (lo > hi) { if (el.dataset.end === '0') lo = hi; else hi = lo; }
+      inputs[0].value = lo; inputs[1].value = hi;
+      document.getElementById('v-' + name).textContent = lo + '\u2013' + hi;
+      clearTimeout(leafTimer);
+      leafTimer = setTimeout(leafSend, 120);
+    });
+  });
+}
+
+function leafShow(data) {
+  if (data.error) { leafMsg.textContent = data.error; return; }
+  leafMsg.textContent = '';
+  leafImg.style.display = 'block';
+  leafImg.src = '/leaf/overlay.jpg?' + Date.now();
+  leafOut.innerHTML = data.leaves.map(l => {
+    const f = l.fractions;
+    return '<div class="leaf"><b>leaf ' + l.number + '</b> \u2014 ' + l.condition +
+      '<br>G ' + f.green.toFixed(2) + ' \u00b7 Y ' + f.yellow.toFixed(2) +
+      ' \u00b7 B ' + f.brown.toFixed(2) +
+      '<br><span class="muted">H ' + l.hsv[0] + ' S ' + l.hsv[1] +
+      ' V ' + l.hsv[2] + '</span></div>';
+  }).join('') || '<div class="muted">no leaf regions found</div>';
+}
+
+async function leafSend() {
+  if (!leafBandsState) return;
+  const body = {};
+  for (const name of Object.keys(leafBandsState)) {
+    const inputs = leafBands.querySelectorAll('input[data-band="' + name + '"]');
+    body[name] = { hue: [Number(inputs[0].value), Number(inputs[1].value)] };
+  }
+  const r = await fetch('/leaf/bands', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  leafShow(await r.json());
+}
+
+document.getElementById('leaffreeze').onclick = async () => {
+  leafMsg.textContent = 'running the model...';
+  const r = await fetch('/leaf/freeze', { method: 'POST' });
+  const data = await r.json();
+  if (data.error) { leafMsg.textContent = data.error; return; }
+  leafSliders(data.bands);
+  leafShow(data);
+};
 </script>
 </body></html>
 """
@@ -377,6 +527,90 @@ def make_handler(state: LiveState):
             except json.JSONDecodeError:
                 return {}
 
+        def _leaf_payload(self, bands: dict, results: list) -> dict:
+            return {
+                "bands": {name: list(band["hue"]) for name, band in bands.items()},
+                "leaves": [
+                    {
+                        "number": r["number"],
+                        "condition": r["condition"],
+                        "fractions": {
+                            k: round(v, 3) for k, v in r["fractions"].items()
+                        },
+                        "hsv": [round(v, 1) for v in r["hsv"]],
+                    }
+                    for r in results
+                ],
+            }
+
+        def _leaf_freeze(self) -> None:
+            """Freeze the current frame and run the model on it once.
+
+            Freezing matters: the stream keeps moving, so a slider that
+            re-analysed a fresh frame each time would be comparing different
+            pictures and would never settle.
+            """
+            with state.lock:
+                array = None if state.array is None else state.array.copy()
+            if array is None:
+                self._json({"error": "no frame yet"}, 503)
+                return
+
+            try:
+                leafs = load_leafs()
+                bands = leafs.load_bands()
+                masks, results = leafs.analyse(array, bands)
+            except Exception as exc:   # model missing, camera busy, ...
+                self._json({"error": str(exc)}, 500)
+                return
+
+            with state.lock:
+                state.leaf = {"array": array, "masks": masks, "bands": bands}
+            self._leaf_render(results)
+            self._json(self._leaf_payload(bands, results))
+
+        def _leaf_bands(self, body: dict) -> None:
+            """Re-classify the frozen frame with the sliders' bands."""
+            with state.lock:
+                cached = state.leaf
+            if cached is None:
+                self._json({"error": "freeze a frame first"}, 409)
+                return
+
+            leafs = load_leafs()
+            bands = bands_from_body(body, cached["bands"])
+            results = []
+            for number, mask in enumerate(cached["masks"], 1):
+                fractions = leafs.color_fracs(cached["array"], mask, bands)
+                results.append(
+                    {
+                        "number": number,
+                        "fractions": fractions,
+                        "hsv": leafs.mean_hsv(cached["array"], mask),
+                        "condition": leafs.health_from_colors(fractions),
+                    }
+                )
+
+            with state.lock:
+                state.leaf["bands"] = bands
+            self._leaf_render(results)
+            self._json(self._leaf_payload(bands, results))
+
+        def _leaf_render(self, results: list) -> None:
+            """Redraw the annotated frame so the panel shows what it measured."""
+            with state.lock:
+                cached = state.leaf
+            if cached is None:
+                return
+            leafs = load_leafs()
+            annotated = leafs.annotate(cached["array"], cached["masks"], results)
+            ok, buffer = cv2.imencode(
+                ".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 80]
+            )
+            if ok:
+                with state.lock:
+                    state.leaf["overlay"] = buffer.tobytes()
+
         def do_GET(self) -> None:
             state.last_request = time.monotonic()
             if self.path in ("/", "/index.html"):
@@ -388,6 +622,19 @@ def make_handler(state: LiveState):
 
             elif self.path == "/settings":
                 self._json(state.snapshot())
+
+            elif self.path == "/leaf/overlay.jpg":
+                with state.lock:
+                    cached = state.leaf
+                    overlay = cached.get("overlay") if cached else None
+                if not overlay:
+                    self.send_error(404, "no leaf analysis yet")
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(overlay)))
+                self.end_headers()
+                self.wfile.write(overlay)
 
             elif self.path == "/snap":
                 with state.lock:
@@ -441,6 +688,12 @@ def make_handler(state: LiveState):
                     crop=body.get("crop"),
                 )
                 self._json(state.snapshot())
+
+            elif self.path == "/leaf/freeze":
+                self._leaf_freeze()
+
+            elif self.path == "/leaf/bands":
+                self._leaf_bands(body)
 
             elif self.path == "/save":
                 with state.lock:
