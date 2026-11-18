@@ -15,18 +15,27 @@ The split between learned and hand-written stages matters:
 So "healthy-ish" is a colour heuristic, not a diagnosis. Lighting, background,
 species and the thresholds all move it.
 
-    python3 leafs.py
+    python3 leafs.py                                  # bundled healthy sample
     python3 leafs.py --image images/pepper_bacterial_spot.jpg
+    python3 leafs.py --camera                         # live Pi camera
+    python3 leafs.py --camera --save shot.jpg         # keep the frame too
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
+import time
 from pathlib import Path
 
 import cv2
 import numpy as np
 import onnxruntime as ort
+
+# pi/vision/leafs.py -> pi/vision -> pi, so `common` is importable
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from common.camera import CameraSettings, capture as camera_capture
 
 from helpers import (
     color_fracs,
@@ -105,15 +114,33 @@ def make_leaf_masks(saliency: np.ndarray, image: np.ndarray) -> list[np.ndarray]
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--image", default=IMAGE_FILE, help="path relative to this folder")
+    ap.add_argument("--camera", action="store_true", help="capture from the Pi camera instead")
+    ap.add_argument("--camera-config", help="path to camera.json (default: config/camera.json)")
+    ap.add_argument("--save", help="write the captured frame here")
     args = ap.parse_args()
 
+    if args.camera:
+        settings = CameraSettings.load(args.camera_config)
+        image = camera_capture(settings)
+        source = (
+            f"camera {settings.size[0]}x{settings.size[1]} "
+            f"rot={settings.rotation} zoom={settings.zoom:g}"
+        )
+        if args.save:
+            cv2.imwrite(args.save, image)
+            print(f"saved frame to {args.save}")
+    else:
+        image = read_and_resize(str(BASE / args.image))
+        source = args.image
+
+    started = time.perf_counter()
     session, input_name = load_model()
-    image = read_and_resize(str(BASE / args.image))
     saliency = infer_map(session, input_name, image)
     masks = make_leaf_masks(saliency, image)
+    elapsed = time.perf_counter() - started
 
-    print(f"image: {args.image}  working size: {image.shape[1]}x{image.shape[0]}")
-    print(f"regions: {len(masks)}")
+    print(f"source: {source}  working size: {image.shape[1]}x{image.shape[0]}")
+    print(f"regions: {len(masks)}  pipeline: {elapsed:.2f} s")
 
     lines = []
     if not masks:

@@ -114,6 +114,39 @@ recorded in the source project, so it is not redistributed. Unzip
 
 Sample photographs: Mohanty, Hughes and Salathe / PlantVillage, CC BY-SA 3.0.
 
+## Camera preview
+
+The Pi is headless, so the preview is served over HTTP and viewed in a browser:
+
+```bash
+cd ~/plant
+.venv/bin/python tools/preview.py
+# open http://10.42.0.15:8080/
+```
+
+Settings live in `config/camera.json` and are shared with the leaf scanner, so
+what you frame in the browser is what gets analysed.
+
+| Key | Meaning |
+|---|---|
+| `size` | output resolution |
+| `sensor_mode` | `[2304, 1296]` uses the whole sensor |
+| `rotation` | 0, 90, 180 or 270 |
+| `zoom` | 1.0 is the full frame, 2.0 crops to the middle half |
+| `preview` | set `false` to disable the server |
+| `preview_port`, `preview_fps` | server settings |
+
+**`sensor_mode` matters.** The Camera Module 3 offers three modes and picamera2
+picks the fastest by default, which is a centre crop of the sensor — the preview
+looks zoomed in. `[2304, 1296]` uses the whole sensor.
+
+**Only one process can hold the camera.** Stop the preview before running
+`leafs.py --camera`:
+
+```bash
+fuser -k 8080/tcp
+```
+
 ## Status
 
 Working and verified on hardware: both sensors, the buzzer, the Pi wake pulse,

@@ -1,0 +1,18 @@
+{
+  "_comment": "Shared by tools/preview.py and pi/vision/leafs.py, so what you frame in the browser is what the scanner analyses.",
+
+  "size": [1024, 768],
+  "sensor_mode": [2304, 1296],
+
+  "_sensor_mode_note": "2304x1296 uses the whole sensor. The default 1536x864 mode is a centre crop and looks zoomed in.",
+
+  "rotation": 0,
+  "_rotation_note": "0, 90, 180 or 270 degrees clockwise.",
+
+  "zoom": 1.0,
+  "_zoom_note": "1.0 is the full frame. 2.0 crops to the middle half and scales back up.",
+
+  "preview": true,
+  "preview_port": 8080,
+  "preview_fps": 15
+}
