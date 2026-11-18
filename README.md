@@ -142,10 +142,24 @@ looks zoomed in. `[2304, 1296]` uses the whole sensor.
 
 ### Framing controls
 
-The page has live controls for rotation, zoom and capture size. Adjust them
-while watching, then press **Save and apply**: that writes `config/camera.json`
-and shuts the server down, freeing the camera for the scanner. Tick "disable
-preview after saving" to set `preview: false` at the same time.
+The page has live controls. Adjust them while watching, then press **Save and
+apply**: that writes `config/camera.json` and shuts the server down, freeing the
+camera for the scanner. Tick "disable preview after saving" to set
+`preview: false` at the same time.
+
+| Control | Effect |
+|---|---|
+| **Rotate** 0/90/180/270 | applied per frame, instant |
+| **Zoom** slider 1.0–3.0 | crops the centre and scales back, instant |
+| **Size** dropdown or custom W×H | reconfigures the camera (~1 s) |
+| **Drag on the image** | sets the crop region, instant |
+| **Crop → Clear** | back to the whole frame |
+| **Save and apply** | writes the config, stops the server |
+
+**Crop is the one that actually saves work.** It produces a genuinely smaller
+output image — a half-width crop really is half the pixels, so less ISP work,
+less JPEG encoding and less memory bandwidth. Zoom only changes framing; it
+scales back to the same output size.
 
 To preview again afterwards, either set `"preview": true` or pass `--force`:
 
@@ -162,10 +176,11 @@ fuser -k 8080/tcp
 
 ### Does a smaller image save power?
 
-Only a little. The sensor still runs at 2304×1296 and the model input is always
-320×320, so inference cost is unchanged. A smaller capture saves ISP work, JPEG
-encoding and memory bandwidth — real, but small next to the cost of *how often*
-you capture. The frequency is the lever that matters.
+Only a little, and crop is the only part that helps. The sensor still runs at
+2304×1296 and the model input is always 320×320, so inference cost is unchanged
+whatever you capture. What you save is ISP work, JPEG encoding and memory
+bandwidth — real, but small next to the cost of *how often* you capture. The
+frequency is the lever that matters.
 
 ## Status
 

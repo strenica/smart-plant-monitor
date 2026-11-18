@@ -34,6 +34,10 @@ class CameraSettings:
     sensor_mode: tuple[int, int] = (2304, 1296)
     rotation: int = 0
     zoom: float = 1.0
+    # Region of interest as (x, y, w, h) in 0..1 fractions of the frame.
+    # (0, 0, 1, 1) means the whole frame. Cropping here produces a genuinely
+    # smaller output image, which is what saves encoding work.
+    crop: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0)
     preview: bool = True
     preview_port: int = 8080
     preview_fps: int = 15
@@ -51,6 +55,7 @@ class CameraSettings:
             sensor_mode=tuple(data.get("sensor_mode", (2304, 1296))),
             rotation=int(data.get("rotation", 0)),
             zoom=float(data.get("zoom", 1.0)),
+            crop=tuple(data.get("crop", (0.0, 0.0, 1.0, 1.0))),
             preview=bool(data.get("preview", True)),
             preview_port=int(data.get("preview_port", 8080)),
             preview_fps=int(data.get("preview_fps", 15)),
@@ -69,12 +74,19 @@ class CameraSettings:
                 "2304x1296 uses the whole sensor. The default 1536x864 mode is a "
                 "centre crop and looks zoomed in."
             ),
+            "crop": [round(v, 4) for v in self.crop],
+            "_crop_note": (
+                "Region of interest as [x, y, w, h] in 0..1 fractions. "
+                "[0, 0, 1, 1] is the whole frame. Cropping here makes the output "
+                "image genuinely smaller, which is the only size change that "
+                "saves real work."
+            ),
             "rotation": self.rotation,
             "_rotation_note": "0, 90, 180 or 270 degrees clockwise.",
             "zoom": self.zoom,
             "_zoom_note": (
                 "1.0 is the full frame. 2.0 crops to the middle half and scales "
-                "back up."
+                "back up, so it changes framing but not output size."
             ),
             "preview": self.preview,
             "preview_port": self.preview_port,
@@ -90,12 +102,30 @@ class CameraSettings:
         return config_path
 
 
-def apply_transform(frame: np.ndarray, rotation: int = 0, zoom: float = 1.0) -> np.ndarray:
-    """Rotate and digitally zoom a frame, keeping the output size unchanged.
+def apply_transform(
+    frame: np.ndarray,
+    rotation: int = 0,
+    zoom: float = 1.0,
+    crop: tuple[float, float, float, float] | None = None,
+) -> np.ndarray:
+    """Crop, zoom and rotate a frame.
 
-    Zoom crops the centre and scales back up, so `zoom=2.0` shows the middle
-    half of the frame at the same output resolution. `zoom=1.0` is a no-op.
+    Order matters. The crop runs first and does **not** scale back up, so a
+    half-width crop really does produce a half-width image — that is the only
+    size change that saves encoding work. Zoom then crops further and scales
+    back to the cropped size, so it changes framing without changing output
+    size. Rotation is last.
     """
+    if crop is not None:
+        x, y, w, h = crop
+        if (x, y, w, h) != (0.0, 0.0, 1.0, 1.0):
+            height, width = frame.shape[:2]
+            x0 = max(0, min(width - 1, int(x * width)))
+            y0 = max(0, min(height - 1, int(y * height)))
+            x1 = max(x0 + 1, min(width, int((x + w) * width)))
+            y1 = max(y0 + 1, min(height, int((y + h) * height)))
+            frame = frame[y0:y1, x0:x1]
+
     if zoom and zoom > 1.0:
         height, width = frame.shape[:2]
         crop_w, crop_h = int(width / zoom), int(height / zoom)
@@ -153,4 +183,4 @@ def capture(settings: CameraSettings, settle: float = 2.0) -> np.ndarray:
         cam.stop()
         cam.close()
 
-    return apply_transform(frame, settings.rotation, settings.zoom)
+    return apply_transform(frame, settings.rotation, settings.zoom, settings.crop)

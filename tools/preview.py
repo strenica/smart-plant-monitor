@@ -63,12 +63,19 @@ class LiveState:
         self.stop = threading.Event()
         self.frame: bytes | None = None
 
-    def update(self, rotation=None, zoom=None, size=None) -> None:
+    def update(self, rotation=None, zoom=None, size=None, crop=None) -> None:
         with self.lock:
             if rotation is not None:
                 self.settings.rotation = int(rotation) % 360
             if zoom is not None:
                 self.settings.zoom = max(1.0, min(4.0, float(zoom)))
+            if crop is not None:
+                x, y, w, h = (float(v) for v in crop)
+                x = max(0.0, min(1.0, x))
+                y = max(0.0, min(1.0, y))
+                w = max(0.05, min(1.0 - x, w))
+                h = max(0.05, min(1.0 - y, h))
+                self.settings.crop = (x, y, w, h)
             if size is not None:
                 new_size = (int(size[0]), int(size[1]))
                 if new_size != self.settings.size:
@@ -82,6 +89,7 @@ class LiveState:
                 "size": list(s.size),
                 "rotation": s.rotation,
                 "zoom": s.zoom,
+                "crop": [round(v, 4) for v in s.crop],
                 "preview": s.preview,
                 "preview_port": s.preview_port,
                 "preview_fps": s.preview_fps,
@@ -104,11 +112,12 @@ def capture_loop(state: LiveState, quality: int) -> None:
                     time.sleep(0.5)
                 rotation = state.settings.rotation
                 zoom = state.settings.zoom
+                crop = state.settings.crop
                 fps = state.settings.preview_fps
 
             started = time.monotonic()
             array = cam.capture_array("main")
-            array = apply_transform(array, rotation, zoom)
+            array = apply_transform(array, rotation, zoom, crop)
             ok, buffer = cv2.imencode(
                 ".jpg", array, [cv2.IMWRITE_JPEG_QUALITY, quality]
             )
@@ -131,21 +140,27 @@ PAGE = """<!doctype html>
   body { background:#111; color:#ddd; font:14px system-ui,sans-serif;
          display:flex; flex-direction:column; }
   header { flex:0 0 auto; padding:10px 14px; background:#1b1b1b;
-           display:flex; gap:18px; align-items:center; flex-wrap:wrap }
+           display:flex; gap:16px; align-items:center; flex-wrap:wrap }
   header b { color:#fff; font-weight:600 }
   /* The image gets whatever vertical space the header leaves and is letterboxed
      inside it, so it never overflows the window whatever the aspect ratio. */
   main { flex:1 1 auto; min-height:0; display:flex; align-items:center;
          justify-content:center; background:#000 }
-  img { max-width:100%; max-height:100%; object-fit:contain; display:block }
-  button, select { background:#2a2a2a; color:#ddd; border:1px solid #444;
-                   border-radius:5px; padding:5px 10px; font:inherit; cursor:pointer }
+  img { max-width:100%; max-height:100%; object-fit:contain; display:block;
+        cursor:crosshair; user-select:none }
+  #sel { position:fixed; border:2px solid #2d6cdf; background:rgba(45,108,223,.18);
+         pointer-events:none; display:none; z-index:10 }
+  button, select, input[type=number] { background:#2a2a2a; color:#ddd;
+         border:1px solid #444; border-radius:5px; padding:5px 10px;
+         font:inherit; cursor:pointer }
+  input[type=number] { width:70px; cursor:text }
   button:hover, select:hover { background:#333 }
   button.on { background:#2d6cdf; border-color:#2d6cdf; color:#fff }
-  input[type=range] { width:130px; vertical-align:middle }
+  input[type=range] { width:120px; vertical-align:middle }
   #save { background:#1f7a3d; border-color:#1f7a3d; color:#fff; font-weight:600 }
   #save:hover { background:#26914a }
-  #status { color:#8c8; min-width:180px }
+  #status { color:#8c8; min-width:150px }
+  #cropinfo { color:#7cf; min-width:70px }
   label { display:flex; gap:6px; align-items:center }
 </style></head>
 <body>
@@ -164,18 +179,31 @@ PAGE = """<!doctype html>
 
   <label>Size <select id="size"></select></label>
 
-  <label><input id="disable" type="checkbox" checked> disable preview after saving</label>
+  <label>Custom
+    <input id="cw" type="number" min="160" max="1920" step="16" placeholder="w">
+    <input id="ch" type="number" min="120" max="1080" step="16" placeholder="h">
+    <button id="applysize">Set</button>
+  </label>
+
+  <label>Crop <span id="cropinfo">full</span>
+    <button id="clearcrop">Clear</button></label>
+
+  <label><input id="disable" type="checkbox" checked> disable after saving</label>
 
   <button id="save">Save and apply</button>
   <span id="status"></span>
 </header>
 <main><img id="stream" src="/stream" alt="camera stream"></main>
+<div id="sel"></div>
 
 <script>
 const SIZES = __SIZES__;
 let state = __STATE__;
 
+const img = document.getElementById('stream');
+const sel = document.getElementById('sel');
 const sizeSel = document.getElementById('size');
+
 for (const [w,h] of SIZES) {
   const o = document.createElement('option');
   o.value = w + 'x' + h; o.textContent = w + 'x' + h;
@@ -188,6 +216,14 @@ function paint() {
   document.getElementById('zoom').value = state.zoom;
   document.getElementById('zoomval').textContent = Number(state.zoom).toFixed(1);
   sizeSel.value = state.size[0] + 'x' + state.size[1];
+  document.getElementById('cw').value = state.size[0];
+  document.getElementById('ch').value = state.size[1];
+
+  const [x,y,w,h] = state.crop;
+  const full = (x === 0 && y === 0 && w === 1 && h === 1);
+  document.getElementById('cropinfo').textContent = full
+    ? 'full'
+    : Math.round(w*100) + '% x ' + Math.round(h*100) + '%';
 }
 
 async function push(patch) {
@@ -212,6 +248,66 @@ sizeSel.onchange = e => {
   push({size: [w,h]});
 };
 
+document.getElementById('applysize').onclick = () => {
+  const w = Number(document.getElementById('cw').value);
+  const h = Number(document.getElementById('ch').value);
+  if (w >= 160 && h >= 120) push({size: [w,h]});
+};
+
+document.getElementById('clearcrop').onclick = () => push({crop: [0,0,1,1]});
+
+// The image is letterboxed by object-fit:contain, so the element box is not the
+// picture. Work out where the picture actually is before mapping mouse coords.
+function imageRect() {
+  const r = img.getBoundingClientRect();
+  const nw = img.naturalWidth || 1, nh = img.naturalHeight || 1;
+  const scale = Math.min(r.width / nw, r.height / nh);
+  const w = nw * scale, h = nh * scale;
+  return { left: r.left + (r.width - w)/2, top: r.top + (r.height - h)/2,
+           width: w, height: h };
+}
+
+let drag = null;
+
+function drawSel(cx, cy) {
+  const left = Math.min(drag.x, cx), top = Math.min(drag.y, cy);
+  sel.style.left = left + 'px';
+  sel.style.top = top + 'px';
+  sel.style.width = Math.abs(cx - drag.x) + 'px';
+  sel.style.height = Math.abs(cy - drag.y) + 'px';
+}
+
+img.addEventListener('mousedown', e => {
+  const r = imageRect();
+  if (e.clientX < r.left || e.clientX > r.left + r.width ||
+      e.clientY < r.top  || e.clientY > r.top + r.height) return;
+  drag = { x: e.clientX, y: e.clientY, r };
+  sel.style.display = 'block';
+  drawSel(e.clientX, e.clientY);
+  e.preventDefault();
+});
+
+window.addEventListener('mousemove', e => { if (drag) drawSel(e.clientX, e.clientY); });
+
+window.addEventListener('mouseup', async e => {
+  if (!drag) return;
+  const { x, y, r } = drag;
+  drag = null;
+  sel.style.display = 'none';
+
+  const x0 = Math.min(x, e.clientX), x1 = Math.max(x, e.clientX);
+  const y0 = Math.min(y, e.clientY), y1 = Math.max(y, e.clientY);
+  if (x1 - x0 < 12 || y1 - y0 < 12) return;   // a click, not a drag
+
+  const clamp = v => Math.max(0, Math.min(1, v));
+  await push({ crop: [
+    clamp((x0 - r.left) / r.width),
+    clamp((y0 - r.top) / r.height),
+    clamp((x1 - x0) / r.width),
+    clamp((y1 - y0) / r.height),
+  ]});
+});
+
 document.getElementById('save').onclick = async () => {
   const status = document.getElementById('status');
   status.textContent = 'saving...';
@@ -221,7 +317,7 @@ document.getElementById('save').onclick = async () => {
   });
   const out = await r.json();
   status.textContent = out.message;
-  document.getElementById('stream').src = '';
+  img.src = '';
 };
 
 paint();
@@ -317,6 +413,7 @@ def make_handler(state: LiveState):
                     rotation=body.get("rotation"),
                     zoom=body.get("zoom"),
                     size=body.get("size"),
+                    crop=body.get("crop"),
                 )
                 self._json(state.snapshot())
 
