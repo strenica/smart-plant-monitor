@@ -62,6 +62,9 @@ class LiveState:
         self.reconfigure = False     # set when `size` changes
         self.stop = threading.Event()
         self.frame: bytes | None = None
+        # Touched by every request. The idle watchdog uses it to give up when
+        # nobody is looking, so a forgotten preview does not hold the camera.
+        self.last_request = time.monotonic()
 
     def update(self, rotation=None, zoom=None, size=None, crop=None) -> None:
         with self.lock:
@@ -375,6 +378,7 @@ def make_handler(state: LiveState):
                 return {}
 
         def do_GET(self) -> None:
+            state.last_request = time.monotonic()
             if self.path in ("/", "/index.html"):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -426,6 +430,7 @@ def make_handler(state: LiveState):
                 self.send_error(404)
 
         def do_POST(self) -> None:
+            state.last_request = time.monotonic()
             body = self._body()
 
             if self.path == "/settings":
@@ -468,6 +473,12 @@ def main() -> None:
     ap.add_argument("--zoom", type=float)
     ap.add_argument("--quality", type=int, default=80, help="JPEG quality 1-100")
     ap.add_argument(
+        "--timeout",
+        type=float,
+        default=0,
+        help="exit if no request arrives for this many seconds (0 = never)",
+    )
+    ap.add_argument(
         "--force",
         action="store_true",
         help="run even when preview is disabled in the config",
@@ -489,6 +500,18 @@ def main() -> None:
         return
 
     state = LiveState(settings)
+
+    if args.timeout > 0:
+        def idle_watchdog() -> None:
+            while not state.stop.is_set():
+                time.sleep(1.0)
+                if time.monotonic() - state.last_request > args.timeout:
+                    print(f"no request for {args.timeout:g} s, giving up")
+                    state.stop.set()
+                    server.shutdown()
+                    return
+
+        threading.Thread(target=idle_watchdog, daemon=True).start()
     thread = threading.Thread(target=capture_loop, args=(state, args.quality), daemon=True)
     thread.start()
 

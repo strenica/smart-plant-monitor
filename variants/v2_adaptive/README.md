@@ -66,3 +66,16 @@ heartbeat = 3600         # Pi photograph when nothing happens
 
 The Pi pushes `sample_interval` and the adaptive bounds over UART2 at startup.
 `--heartbeat` overrides the heartbeat for a single run.
+
+## Setup mode
+
+Pressing EN on the ESP32 cold-boots it and puts it in setup mode. The next Pi
+boot then runs the camera preview instead of this variant's loop, so you can
+reframe. It ends on **save and apply**, or after five minutes with no browser,
+and the loop starts afterwards either way.
+
+```bash
+.venv/bin/python tools/supervisor.py --variant v2_adaptive
+```
+
+is what the systemd unit runs; it asks the ESP32 which mode to use.

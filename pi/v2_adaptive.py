@@ -55,7 +55,7 @@ def main() -> None:
     vision = None
     if not args.no_vision:
         import leafs
-        from common.camera import CameraSettings, capture
+        from common.camera import CameraSettings, capture, save_last
 
         settings = CameraSettings.load()
         vision = (leafs, settings, capture)
@@ -75,6 +75,7 @@ def main() -> None:
         leafs_module, settings, capture = vision
         try:
             image = capture(settings)
+            save_last(image)
             _, results = leafs_module.analyse(image)
         except Exception as exc:   # camera busy, model missing, ...
             log.note(f"vision failed ({why}): {exc}")

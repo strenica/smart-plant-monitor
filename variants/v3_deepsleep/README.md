@@ -67,3 +67,16 @@ adaptive_slow = 600      # after three quiet samples
 The Pi pushes these over UART2 whenever it is awake, and the ESP32 keeps them in
 RTC memory across deep sleep. A power cycle falls back to the compiled defaults,
 because the Pi is off and there is nobody to resend them.
+
+## Setup mode
+
+Pressing EN on the ESP32 cold-boots it and puts it in setup mode. The next Pi
+boot then runs the camera preview instead of this variant's loop, so you can
+reframe. It ends on **save and apply**, or after five minutes with no browser,
+and the loop starts afterwards either way.
+
+```bash
+.venv/bin/python tools/supervisor.py --variant v3_deepsleep
+```
+
+is what the systemd unit runs; it asks the ESP32 which mode to use.

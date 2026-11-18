@@ -6,6 +6,7 @@
 #   ./install.sh v1_duty --pi-only    Pi code only
 #   ./install.sh v1_duty --no-flash   build the firmware but do not flash it
 #   ./install.sh v1_duty --service    also install a systemd unit
+#   ./install.sh v1_duty --dashboard  also install the web dashboard on boot
 #   ./install.sh --list               show the variants
 #
 # The ESP32 is wired to the Pi, not to this laptop, so the build happens here
@@ -43,6 +44,7 @@ FW_ONLY=0
 PI_ONLY=0
 NO_FLASH=0
 SERVICE=0
+DASHBOARD=0
 
 for arg in "$@"; do
   case "$arg" in
@@ -51,6 +53,7 @@ for arg in "$@"; do
     --pi-only)  PI_ONLY=1 ;;
     --no-flash) NO_FLASH=1 ;;
     --service)  SERVICE=1 ;;
+    --dashboard) DASHBOARD=1 ;;
     -h|--help)  usage; exit 0 ;;
     -*)         echo "unknown option: $arg" >&2; usage >&2; exit 1 ;;
     *)          VARIANT="$arg" ;;
@@ -118,6 +121,23 @@ if [ "$FW_ONLY" -eq 0 ]; then
     [ -d .venv ] || python3 -m venv --system-site-packages .venv; \
     .venv/bin/pip install -q -r requirements.txt"
 
+  # Install a unit file. sudo over SSH has no terminal, so it only works
+  # unattended when the Pi has passwordless sudo. Rather than embed a password
+  # here, print the commands and let the user run them.
+  install_unit() {
+    local unit="$1" start="$2"
+    scp -q "/tmp/$unit" "$PI:/tmp/$unit"
+    if ssh "$PI" "sudo -n true" 2>/dev/null; then
+      ssh "$PI" "sudo mv /tmp/$unit /etc/systemd/system/$unit && \
+        sudo systemctl daemon-reload && sudo systemctl enable $start $unit"
+      echo "   installed and enabled"
+    else
+      echo "   sudo needs a password on $PI, so run this yourself:"
+      echo "     ssh $PI 'sudo mv /tmp/$unit /etc/systemd/system/$unit && \\"
+      echo "       sudo systemctl daemon-reload && sudo systemctl enable $start $unit'"
+    fi
+  }
+
   if [ "$SERVICE" -eq 1 ]; then
     echo "== systemd unit: plant-$VARIANT"
     UNIT="plant-$VARIANT.service"
@@ -129,20 +149,37 @@ if [ "$FW_ONLY" -eq 0 ]; then
       "[Service]" \
       "Type=simple" \
       "WorkingDirectory=$PI_DIR" \
-      "ExecStart=$PI_DIR/.venv/bin/python $PI_DIR/variants/$VARIANT/run.py" \
+      "ExecStart=$PI_DIR/.venv/bin/python $PI_DIR/tools/supervisor.py --variant $VARIANT" \
       "Restart=no" \
       "" \
       "[Install]" \
       "WantedBy=multi-user.target" \
       > "/tmp/$UNIT"
-    scp -q "/tmp/$UNIT" "$PI:/tmp/$UNIT"
-    ssh "$PI" "sudo mv /tmp/$UNIT /etc/systemd/system/$UNIT && \
-      sudo systemctl daemon-reload && \
-      sudo systemctl enable $UNIT"
-    echo "   enabled; start it with: ssh $PI 'sudo systemctl start $UNIT'"
+    install_unit "$UNIT" ""
+  fi
+
+  if [ "$DASHBOARD" -eq 1 ]; then
+    echo "== systemd unit: plant-dashboard"
+    UNIT="plant-dashboard.service"
+    printf '%s\n' \
+      "[Unit]" \
+      "Description=Smart plant monitor dashboard" \
+      "After=multi-user.target" \
+      "" \
+      "[Service]" \
+      "Type=simple" \
+      "WorkingDirectory=$PI_DIR" \
+      "ExecStart=$PI_DIR/.venv/bin/python $PI_DIR/tools/dashboard.py" \
+      "Restart=always" \
+      "" \
+      "[Install]" \
+      "WantedBy=multi-user.target" \
+      > "/tmp/$UNIT"
+    install_unit "$UNIT" "--now"
+    echo "   dashboard on http://<pi-address>:8081/"
   fi
 fi
 
 echo
 echo "== done: $VARIANT"
-echo "   run on the Pi:  ssh $PI 'cd $PI_DIR && .venv/bin/python variants/$VARIANT/run.py'"
+echo "   run on the Pi:  ssh $PI 'cd $PI_DIR && .venv/bin/python tools/supervisor.py --variant $VARIANT'"

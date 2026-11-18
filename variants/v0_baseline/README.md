@@ -45,3 +45,16 @@ sample_interval = 2      # seconds, pushed to the ESP32 over UART2 at startup
 
 The ESP32 keeps it in RTC memory, so it survives deep sleep but not a power
 cycle. Leave the key out and the compiled default applies.
+
+## Setup mode
+
+Pressing EN on the ESP32 cold-boots it and puts it in setup mode. The next Pi
+boot then runs the camera preview instead of this variant's loop, so you can
+reframe. It ends on **save and apply**, or after five minutes with no browser,
+and the loop starts afterwards either way.
+
+```bash
+.venv/bin/python tools/supervisor.py --variant v0_baseline
+```
+
+is what the systemd unit runs; it asks the ESP32 which mode to use.

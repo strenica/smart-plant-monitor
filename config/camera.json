@@ -10,10 +10,10 @@
   ],
   "_sensor_mode_note": "2304x1296 uses the whole sensor. The default 1536x864 mode is a centre crop and looks zoomed in.",
   "crop": [
-    0.386,
-    0.1317,
-    0.3128,
-    0.6145
+    0.3544,
+    0.1362,
+    0.3677,
+    0.6212
   ],
   "_crop_note": "Region of interest as [x, y, w, h] in 0..1 fractions. [0, 0, 1, 1] is the whole frame. Cropping here makes the output image genuinely smaller, which is the only size change that saves real work.",
   "rotation": 180,

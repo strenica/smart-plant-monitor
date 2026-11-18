@@ -117,6 +117,39 @@ cd ~/plant
 
 `--dry-run` evaluates and logs without buzzing. Drop it to drive the buzzer.
 
+## Setup mode: press EN to reframe
+
+Pressing EN on the ESP32 cold-boots it, and it remembers that. On the next Pi
+boot the supervisor asks it what mode it is in:
+
+```
+esp32 mode: setup
+setup mode: preview on port 8080, giving up after 300 s with no browser
+```
+
+The camera preview runs instead of the monitoring loop, so you can reframe
+without fighting the scanner for the camera. It ends when you press **save and
+apply**, or after five minutes with no browser connected. Either way the
+monitoring loop starts afterwards, so a forgotten preview cannot leave the plant
+unwatched.
+
+The flag lives in the ESP32's RTC memory and is cleared once framing is done, so
+the next boot goes straight to monitoring. A power cycle clears it too.
+
+This only works while the Pi is booting. In V0-V2 the Pi is always on, so
+pressing EN does nothing to a running Pi — reboot it to enter setup mode.
+
+## Dashboard
+
+```bash
+./install.sh v1_duty --dashboard
+```
+
+installs a small web UI on port 8081: the latest sensor values, the event log,
+and an editor for `configuration.txt` that validates before saving. It shows the
+last frame the scanner analysed rather than a live stream, because only one
+process can hold the camera and the monitoring loop needs it.
+
 ## configuration.txt
 
 ```

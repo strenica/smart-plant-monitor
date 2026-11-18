@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "config.h"
 #include "sensors.h"
@@ -41,6 +42,11 @@ static RTC_DATA_ATTR uint32_t s_clock_ms = 0;
 // compiled default". RTC memory keeps them across deep sleep, so a V3 node
 // keeps the interval the Pi last sent it; a power cycle resets them.
 static RTC_DATA_ATTR uint32_t s_interval_ms = 0;
+
+// Set when the board cold-boots, which is what pressing EN does. The Pi asks
+// about it at startup and, if set, boots into the camera preview instead of the
+// monitoring loop. Cleared when the Pi says it is done framing.
+static RTC_DATA_ATTR bool s_setup_mode = false;
 static RTC_DATA_ATTR uint32_t s_fast_ms = 0;
 static RTC_DATA_ATTR uint32_t s_slow_ms = 0;
 
@@ -86,12 +92,56 @@ static uint32_t adaptive_interval(const struct reading *r)
 }
 #endif
 
+static void handle_command(const char *cmd)
+{
+    int n = 0;
+    unsigned long ms = 0, fast = 0, slow = 0;
+
+    if (sscanf(cmd, "buzz %d", &n) == 1 && n > 0 && n <= 5) {
+        buzzer_beep(n);
+    } else if (strncmp(cmd, "mode?", 5) == 0) {
+        pi_link_send(s_setup_mode ? "mode setup" : "mode run");
+    } else if (strncmp(cmd, "mode run", 8) == 0) {
+        s_setup_mode = false;
+        ESP_LOGI(TAG, "setup mode cleared");
+    } else if (sscanf(cmd, "set interval %lu", &ms) == 1 && ms >= 1000) {
+        s_interval_ms = (uint32_t)ms;
+        ESP_LOGI(TAG, "sample interval now %lu ms", ms);
+    } else if (sscanf(cmd, "set adaptive %lu %lu", &fast, &slow) == 2 &&
+               fast >= 1000 && slow >= fast) {
+        s_fast_ms = (uint32_t)fast;
+        s_slow_ms = (uint32_t)slow;
+        ESP_LOGI(TAG, "adaptive bounds now %lu..%lu ms", fast, slow);
+    }
+}
+
+// Commands are polled from their own task rather than the sampling loop. With a
+// 60 s interval the loop would otherwise take a minute to answer "mode?", and
+// the Pi would sit waiting at boot.
+static void command_task(void *arg)
+{
+    char cmd[64];
+    while (1) {
+        if (pi_link_recv(cmd, sizeof(cmd)) > 0) {
+            ESP_LOGI(TAG, "pi says: %s", cmd);
+            handle_command(cmd);
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
 void app_main(void)
 {
     // Deep sleep restarts the CPU, so app_main runs again on every wake. The
     // bring-up diagnostics must not repeat: three beeps a minute would be
     // absurd and would wreck the energy measurement.
     bool cold_boot = esp_reset_reason() != ESP_RST_DEEPSLEEP;
+
+    if (cold_boot) {
+        // Pressing EN is how you ask for setup mode: the Pi comes up in the
+        // camera preview so you can reframe, then returns to monitoring.
+        s_setup_mode = true;
+    }
 
     ESP_LOGI(TAG, "=== plant monitor: %s ===", VARIANT_NAME);
     ESP_LOGI(TAG, "sample interval: %d ms", SAMPLE_INTERVAL_MS);
@@ -119,6 +169,8 @@ void app_main(void)
         ESP_LOGI(TAG, "buzzer: 3 beeps");
         buzzer_beep(3);
     }
+
+    xTaskCreate(command_task, "commands", 3072, NULL, 5, NULL);
 
     ESP_LOGI(TAG, "--- readings ---");
 
@@ -169,28 +221,6 @@ void app_main(void)
 #else
         pi_link_send(line);
 #endif
-
-        // Anything the Pi sent since the last pass. Read in every variant: in
-        // V3 the Pi is off most of the time, but when it wakes it can still
-        // retune the interval. "buzz N" proves the link works both ways.
-        char cmd[64];
-        if (pi_link_recv(cmd, sizeof(cmd)) > 0) {
-            ESP_LOGI(TAG, "pi says: %s", cmd);
-            int n = 0;
-            unsigned long ms = 0, fast = 0, slow = 0;
-
-            if (sscanf(cmd, "buzz %d", &n) == 1 && n > 0 && n <= 5) {
-                buzzer_beep(n);
-            } else if (sscanf(cmd, "set interval %lu", &ms) == 1 && ms >= 1000) {
-                s_interval_ms = (uint32_t)ms;
-                ESP_LOGI(TAG, "sample interval now %lu ms", ms);
-            } else if (sscanf(cmd, "set adaptive %lu %lu", &fast, &slow) == 2 &&
-                       fast >= 1000 && slow >= fast) {
-                s_fast_ms = (uint32_t)fast;
-                s_slow_ms = (uint32_t)slow;
-                ESP_LOGI(TAG, "adaptive bounds now %lu..%lu ms", fast, slow);
-            }
-        }
 
         s_clock_ms += interval_ms;
 

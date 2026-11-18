@@ -188,6 +188,18 @@ def open_camera(settings: CameraSettings):
     return cam
 
 
+def save_last(image: np.ndarray, path: str | Path = "logs/last_capture.jpg") -> None:
+    """Keep the frame that was just analysed, for the dashboard to show.
+
+    The dashboard cannot stream the camera: only one process can hold it, and
+    the variant loop needs it. Showing the frame that produced the verdict is
+    both cheaper and more useful than a live view.
+    """
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(target), image)
+
+
 def capture(settings: CameraSettings, settle: float | None = None) -> np.ndarray:
     """Grab one transformed frame and release the camera.
 

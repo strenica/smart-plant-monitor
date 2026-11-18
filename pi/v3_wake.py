@@ -31,7 +31,7 @@ def main() -> None:
     args = ap.parse_args()
 
     import leafs
-    from common.camera import CameraSettings, capture
+    from common.camera import CameraSettings, capture, save_last
     from common.logger import EventLog
 
     settings = CameraSettings.load()
@@ -40,6 +40,7 @@ def main() -> None:
         log.note("v3 wake: capturing")
         try:
             image = capture(settings)
+            save_last(image)
             _, results = leafs.analyse(image)
         except Exception as exc:   # camera busy, model missing, ...
             log.note(f"v3 wake: vision failed: {exc}")
