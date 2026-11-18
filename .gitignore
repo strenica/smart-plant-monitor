@@ -1,0 +1,22 @@
+# ESP-IDF build output
+build/
+sdkconfig
+sdkconfig.old
+
+# editor
+.vscode/
+.idea/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# captured data
+logs/*.csv
+logs/*.png
+
+# course materials: lecture slides, lab guides and supplied datasets.
+# Not our work, and not ours to republish.
+*.pdf
+*.zip
