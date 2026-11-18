@@ -113,6 +113,9 @@ STYLE = """
   .ok { color:#7bd88f; } .err { color:#ff8a80; }
   .muted { color:#777; }
   img.shot { max-width:100%; border-radius:8px; border:1px solid #2a2a2a; }
+  .shots { display:flex; gap:1rem; flex-wrap:wrap; }
+  .shots figure { margin:0; flex:1 1 20rem; min-width:0; }
+  .shots figcaption { color:#888; font-size:.8rem; margin-top:.35rem; }
 """
 
 
@@ -153,7 +156,8 @@ def page(title: str, body: str, active: str) -> bytes:
 </body></html>""".encode()
 
 
-def make_handler(log_path: Path, config_path: Path, capture_path: Path):
+def make_handler(log_path: Path, config_path: Path, capture_path: Path,
+                 analysis_path: Path):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args) -> None:
             pass   # quiet; the variant loop owns the console
@@ -178,7 +182,9 @@ def make_handler(log_path: Path, config_path: Path, capture_path: Path):
             elif path == "/config":
                 self._config()
             elif path == "/capture.jpg":
-                self._capture()
+                self._image(capture_path, "no capture yet")
+            elif path == "/analysis.jpg":
+                self._image(analysis_path, "no analysis yet")
             else:
                 self.send_error(404)
 
@@ -236,17 +242,30 @@ def make_handler(log_path: Path, config_path: Path, capture_path: Path):
                 for line in reversed(lines[-25:])
             ) or '<tr><td class="muted">no log yet</td></tr>'
 
-            shot = ""
-            if capture_path.exists():
-                stamp = capture_path.stat().st_mtime
-                shot = (
+            shots = ""
+            if capture_path.exists() or analysis_path.exists():
+                figures = ""
+                for source, url, caption in (
+                    (capture_path, "/capture.jpg", "as captured"),
+                    (analysis_path, "/analysis.jpg",
+                     "leaf regions the model found"),
+                ):
+                    if not source.exists():
+                        continue
+                    stamp = int(source.stat().st_mtime)
+                    figures += (
+                        f'<figure><img class="shot" src="{url}?{stamp}" '
+                        f'alt="{caption}">'
+                        f"<figcaption>{caption}</figcaption></figure>"
+                    )
+                shots = (
                     '<h2>last analysed frame</h2>'
-                    f'<img class="shot" src="/capture.jpg?{int(stamp)}" alt="last capture">'
+                    f'<div class="shots">{figures}</div>'
                 )
 
             body = f"""<h1>Plant monitor</h1>
 <div class="cards">{cards}</div>
-{shot}
+{shots}
 <h2>recent events</h2>
 <table>{recent}</table>"""
             self._send(page("Plant monitor", body, "status"))
@@ -283,12 +302,11 @@ written, so a typo is reported instead of saved.</p>
 </form>"""
             self._send(page("Config", body, "config"))
 
-        def _capture(self) -> None:
-            if not capture_path.exists():
-                self.send_error(404, "no capture yet")
+        def _image(self, source: Path, missing: str) -> None:
+            if not source.exists():
+                self.send_error(404, missing)
                 return
-            data = capture_path.read_bytes()
-            self._send(data, content_type="image/jpeg")
+            self._send(source.read_bytes(), content_type="image/jpeg")
 
     return Handler
 
@@ -299,9 +317,15 @@ def main() -> None:
     ap.add_argument("--log", default=str(ROOT / "logs" / "events_log.txt"))
     ap.add_argument("--config", default=str(ROOT / "config" / "configuration.txt"))
     ap.add_argument("--capture", default=str(ROOT / "logs" / "last_capture.jpg"))
+    ap.add_argument("--analysis", default=str(ROOT / "logs" / "last_analysis.jpg"))
     args = ap.parse_args()
 
-    handler = make_handler(Path(args.log), Path(args.config), Path(args.capture))
+    handler = make_handler(
+        Path(args.log),
+        Path(args.config),
+        Path(args.capture),
+        Path(args.analysis),
+    )
     server = ThreadingHTTPServer(("0.0.0.0", args.port), handler)
     print(f"dashboard on http://<pi-address>:{args.port}/")
     print("ctrl-c to stop")

@@ -228,6 +228,10 @@ the event log, and an editor for `configuration.txt` that validates before
 writing. It shows the last frame the scanner analysed rather than a live stream,
 because only one process can hold the camera and the monitoring loop needs it.
 
+Two frames are shown: the raw capture, and the same frame with the leaf regions
+outlined in red and each verdict written on. The annotated one is what lets you
+tell a real problem from the model having picked the wrong region.
+
 Recent events are listed newest first. How much history is kept is set by
 `log_max_lines` in `configuration.txt` (default 50000, `0` keeps everything);
 the file is trimmed when a run opens it and again whenever it doubles.

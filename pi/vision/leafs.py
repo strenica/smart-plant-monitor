@@ -140,6 +140,24 @@ def analyse(image: np.ndarray) -> tuple[list[np.ndarray], list[dict]]:
     return masks, results
 
 
+def annotate(image: np.ndarray, masks: list[np.ndarray], results: list[dict]) -> np.ndarray:
+    """The same frame with the leaf regions outlined and the verdicts written on.
+
+    This is the picture that explains the log line. Without it "stressed-ish" is
+    just a word, and there is no way to tell a real problem from the model
+    having picked the wrong region.
+    """
+    lines = [
+        f"Leaf {r['number']}: {r['condition']}  "
+        f"G={r['fractions']['green']:.2f} "
+        f"Y={r['fractions']['yellow']:.2f} "
+        f"B={r['fractions']['brown']:.2f}"
+        for r in results
+    ]
+    annotated, _ = draw_overlay(image, masks, lines)
+    return annotated
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--image", default=IMAGE_FILE, help="path relative to this folder")

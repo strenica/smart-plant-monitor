@@ -160,7 +160,11 @@ def main() -> None:
                     try:
                         image = capture(settings)
                         save_last(image)
-                        _, results = leafs_module.analyse(image)
+                        masks, results = leafs_module.analyse(image)
+                        save_last(
+                            leafs_module.annotate(image, masks, results),
+                            "logs/last_analysis.jpg",
+                        )
                     except Exception as exc:   # camera busy, model missing, ...
                         log.note(f"vision failed: {exc}")
                         print(f"\n  vision failed: {exc}")

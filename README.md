@@ -169,6 +169,12 @@ before saving. It shows the last frame the scanner analysed rather than a live
 stream, because only one process can hold the camera and the monitoring loop
 needs it.
 
+Two frames, side by side: the capture as it came off the camera, and the same
+frame with the leaf regions the model found outlined in red and each verdict
+written on. The second one is what makes a log line like `G=0.99 B=0.00
+healthy-ish` checkable — you can see whether the model picked the leaf or the
+wall behind it.
+
 Saving restarts `plant-monitor`, because the variant loops read the config once
 at startup and a saved file otherwise does nothing until the next reboot. The
 restart is skipped while the camera preview is up, since the preview runs under
