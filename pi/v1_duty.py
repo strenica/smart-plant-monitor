@@ -20,7 +20,7 @@ from pathlib import Path
 
 import serial
 
-from common.config import parse_config, parse_reading
+from common.config import parse_config, parse_reading, parse_timing
 from common.logger import EventLog
 from common.rules import RuleEngine
 
@@ -43,8 +43,9 @@ def main() -> None:
     ap.add_argument(
         "--image-interval",
         type=float,
-        default=300.0,
-        help="seconds between camera captures",
+        default=None,
+        help="seconds between camera captures (default: image_interval from "
+        "configuration.txt, else 300)",
     )
     ap.add_argument(
         "--no-vision",
@@ -58,9 +59,17 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    rules = parse_config(Path(args.config).read_text())
+    config_text = Path(args.config).read_text()
+    rules = parse_config(config_text)
+    timing = parse_timing(config_text)
     if not rules:
         sys.exit(f"no rules found in {args.config}")
+
+    image_interval = args.image_interval
+    if image_interval is None:
+        image_interval = (
+            timing.image_interval if timing.image_interval is not None else 300.0
+        )
 
     print(f"loaded {len(rules)} rules from {args.config}")
     for rule in rules:
@@ -76,7 +85,7 @@ def main() -> None:
         settings = CameraSettings.load()
         vision = (leafs, settings, capture)
         print(
-            f"vision every {args.image_interval:g} s at "
+            f"vision every {image_interval:g} s at "
             f"{settings.size[0]}x{settings.size[1]}"
         )
 
@@ -84,6 +93,11 @@ def main() -> None:
         ser = serial.Serial(args.port, args.baud, timeout=1)
     except serial.SerialException as exc:
         sys.exit(f"cannot open {args.port}: {exc}")
+
+    # Retune the ESP32 without reflashing it. It keeps the value in RTC memory,
+    # so it survives deep sleep but not a power cycle.
+    if timing.sample_interval is not None:
+        ser.write(f"set interval {int(timing.sample_interval * 1000)}\n".encode())
 
     next_image = time.monotonic()   # capture one straight away
 
@@ -123,7 +137,7 @@ def main() -> None:
                         )
 
                 if vision is not None and time.monotonic() >= next_image:
-                    next_image = time.monotonic() + args.image_interval
+                    next_image = time.monotonic() + image_interval
                     leafs_module, settings, capture = vision
                     try:
                         image = capture(settings)

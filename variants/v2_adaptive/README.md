@@ -52,3 +52,17 @@ Compiled into the firmware as `RULES_TEXT` in `variant.h`, because the ESP32 has
 to evaluate them with no Pi present. The format is identical to
 `config/configuration.txt`. A production build would read them from NVS or
 LittleFS instead; that is a provisioning step, not a design change.
+
+## Timing
+
+Set the intervals in `config/configuration.txt`; no reflash needed.
+
+```
+sample_interval = 10     # ESP32 base interval
+adaptive_fast = 10       # while the readings are moving
+adaptive_slow = 600      # after three quiet samples
+heartbeat = 3600         # Pi photograph when nothing happens
+```
+
+The Pi pushes `sample_interval` and the adaptive bounds over UART2 at startup.
+`--heartbeat` overrides the heartbeat for a single run.

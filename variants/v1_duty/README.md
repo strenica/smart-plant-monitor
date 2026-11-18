@@ -44,3 +44,15 @@ Pi link is on UART2, so sleeping would silently drop the Pi's `buzz N`
 commands. The ESP32 draws about 0.1 W against the Pi's 3 W, so the saving is
 not worth losing the link. V3 deep sleeps instead, when the Pi is off and there
 is nothing to receive.
+
+## Timing
+
+Set the intervals in `config/configuration.txt`; no reflash needed.
+
+```
+sample_interval = 60     # ESP32, pushed over UART2 at startup
+image_interval = 300     # Pi camera
+```
+
+`--image-interval` overrides `image_interval` for a single run, which is handy
+while testing. Leave a key out and the compiled default applies.

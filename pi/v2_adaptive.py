@@ -20,7 +20,7 @@ from pathlib import Path
 
 import serial
 
-from common.config import parse_reading
+from common.config import parse_reading, parse_timing
 from common.logger import EventLog
 
 # leafs.py imports helpers.py as a sibling, so pi/vision has to be on the path.
@@ -31,12 +31,14 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--port", default="/dev/serial0")
     ap.add_argument("--baud", type=int, default=115200)
+    ap.add_argument("--config", default="config/configuration.txt")
     ap.add_argument("--log", default="logs/events_log.txt")
     ap.add_argument(
         "--heartbeat",
         type=float,
-        default=3600.0,
-        help="seconds between pictures when nothing happens",
+        default=None,
+        help="seconds between pictures when nothing happens (default: "
+        "heartbeat from configuration.txt, else 3600)",
     )
     ap.add_argument(
         "--no-vision",
@@ -44,6 +46,11 @@ def main() -> None:
         help="log readings only, never touch the camera",
     )
     args = ap.parse_args()
+
+    timing = parse_timing(Path(args.config).read_text())
+    heartbeat = args.heartbeat
+    if heartbeat is None:
+        heartbeat = timing.heartbeat if timing.heartbeat is not None else 3600.0
 
     vision = None
     if not args.no_vision:
@@ -53,7 +60,7 @@ def main() -> None:
         settings = CameraSettings.load()
         vision = (leafs, settings, capture)
         print(
-            f"vision on event and every {args.heartbeat:g} s at "
+            f"vision on event and every {heartbeat:g} s at "
             f"{settings.size[0]}x{settings.size[1]}"
         )
 
@@ -87,7 +94,16 @@ def main() -> None:
             )
         print(f"\n  vision ({why}): {len(results)} leaf region(s)")
 
-    next_heartbeat = time.monotonic() + args.heartbeat
+    # Retune the ESP32 without reflashing it.
+    if timing.sample_interval is not None:
+        ser.write(f"set interval {int(timing.sample_interval * 1000)}\n".encode())
+    if timing.adaptive_fast is not None and timing.adaptive_slow is not None:
+        ser.write(
+            f"set adaptive {int(timing.adaptive_fast * 1000)} "
+            f"{int(timing.adaptive_slow * 1000)}\n".encode()
+        )
+
+    next_heartbeat = time.monotonic() + heartbeat
 
     with EventLog(args.log) as log:
         log.note("v2 adaptive sampling started")
@@ -127,7 +143,7 @@ def main() -> None:
                             )
 
                 if time.monotonic() >= next_heartbeat:
-                    next_heartbeat = time.monotonic() + args.heartbeat
+                    next_heartbeat = time.monotonic() + heartbeat
                     photograph(log, "heartbeat")
 
         except KeyboardInterrupt:

@@ -34,3 +34,14 @@ cd ~/plant && .venv/bin/python variants/v0_baseline/run.py
 
 Highest of the four. The Pi is awake and polling continuously and the ESP32
 never sleeps.
+
+## Timing
+
+Set the sampling interval in `config/configuration.txt`; no reflash needed.
+
+```
+sample_interval = 2      # seconds, pushed to the ESP32 over UART2 at startup
+```
+
+The ESP32 keeps it in RTC memory, so it survives deep sleep but not a power
+cycle. Leave the key out and the compiled default applies.

@@ -37,6 +37,18 @@ static const char *TAG = "plant";
 // wake, so the rule cooldown needs a counter of its own.
 static RTC_DATA_ATTR uint32_t s_clock_ms = 0;
 
+// Intervals retuned by the Pi from configuration.txt. Zero means "use the
+// compiled default". RTC memory keeps them across deep sleep, so a V3 node
+// keeps the interval the Pi last sent it; a power cycle resets them.
+static RTC_DATA_ATTR uint32_t s_interval_ms = 0;
+static RTC_DATA_ATTR uint32_t s_fast_ms = 0;
+static RTC_DATA_ATTR uint32_t s_slow_ms = 0;
+
+static uint32_t base_interval(void)
+{
+    return s_interval_ms ? s_interval_ms : SAMPLE_INTERVAL_MS;
+}
+
 #if ADAPTIVE_INTERVAL
 // Back off when the readings are boring, come back fast when they move.
 //
@@ -54,7 +66,7 @@ static uint32_t adaptive_interval(const struct reading *r)
         prev_soil = r->soil_raw;
         prev_temp = r->air_temp_c;
         have_prev = true;
-        return SAMPLE_INTERVAL_MS;
+        return base_interval();
     }
 
     int   soil_delta = abs(r->soil_raw - prev_soil);
@@ -64,13 +76,13 @@ static uint32_t adaptive_interval(const struct reading *r)
 
     if (soil_delta >= ADAPTIVE_SOIL_DELTA || temp_delta >= ADAPTIVE_TEMP_DELTA) {
         stable = 0;
-        return ADAPTIVE_FAST_MS;
+        return s_fast_ms ? s_fast_ms : ADAPTIVE_FAST_MS;
     }
 
     if (++stable >= ADAPTIVE_STABLE_SAMPLES) {
-        return ADAPTIVE_SLOW_MS;
+        return s_slow_ms ? s_slow_ms : ADAPTIVE_SLOW_MS;
     }
-    return SAMPLE_INTERVAL_MS;
+    return base_interval();
 }
 #endif
 
@@ -127,7 +139,7 @@ void app_main(void)
 
         ESP_LOGI(TAG, "%s", line);
 
-        uint32_t interval_ms = SAMPLE_INTERVAL_MS;
+        uint32_t interval_ms = base_interval();
 
 #if ADAPTIVE_INTERVAL
         interval_ms = adaptive_interval(&r);
@@ -156,18 +168,29 @@ void app_main(void)
         }
 #else
         pi_link_send(line);
+#endif
 
-        // Anything the Pi sent since the last pass. "buzz N" proves the link
-        // works in both directions.
+        // Anything the Pi sent since the last pass. Read in every variant: in
+        // V3 the Pi is off most of the time, but when it wakes it can still
+        // retune the interval. "buzz N" proves the link works both ways.
         char cmd[64];
         if (pi_link_recv(cmd, sizeof(cmd)) > 0) {
             ESP_LOGI(TAG, "pi says: %s", cmd);
             int n = 0;
+            unsigned long ms = 0, fast = 0, slow = 0;
+
             if (sscanf(cmd, "buzz %d", &n) == 1 && n > 0 && n <= 5) {
                 buzzer_beep(n);
+            } else if (sscanf(cmd, "set interval %lu", &ms) == 1 && ms >= 1000) {
+                s_interval_ms = (uint32_t)ms;
+                ESP_LOGI(TAG, "sample interval now %lu ms", ms);
+            } else if (sscanf(cmd, "set adaptive %lu %lu", &fast, &slow) == 2 &&
+                       fast >= 1000 && slow >= fast) {
+                s_fast_ms = (uint32_t)fast;
+                s_slow_ms = (uint32_t)slow;
+                ESP_LOGI(TAG, "adaptive bounds now %lu..%lu ms", fast, slow);
             }
         }
-#endif
 
         s_clock_ms += interval_ms;
 

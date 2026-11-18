@@ -123,11 +123,28 @@ cd ~/plant
 1: air_humidity > 50
 2: air_temperature < 15
 3: soil_humidity < 300
+
+sample_interval = 60
+image_interval = 300
+heartbeat = 3600
+adaptive_fast = 10
+adaptive_slow = 600
 ```
 
 The rule number is the buzz count: rule 2 buzzes twice. A rule buzzes when it
 *enters* violation, then re-alerts once per cooldown (30 min by default) while
 it stays violated. Clearing a condition is silent.
+
+The `key = value` lines set the intervals, in seconds. They are optional: a
+missing key falls back to the variant's compiled default, so a file with only
+rules still runs. An unknown key is an error rather than a silent no-op, because
+a typo that quietly leaves the old interval in place is worse than a crash.
+
+`sample_interval` is pushed to the ESP32 over UART2 when the Pi starts, so
+changing it does not need a reflash. The ESP32 keeps it in RTC memory, which
+survives deep sleep but not a power cycle. `adaptive_fast` and `adaptive_slow`
+are only used by V2 and V3, `image_interval` only by V1, and `heartbeat` only by
+V2.
 
 ## Vision
 

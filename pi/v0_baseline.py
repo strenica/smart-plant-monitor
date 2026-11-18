@@ -19,7 +19,7 @@ from pathlib import Path
 
 import serial
 
-from common.config import parse_config, parse_reading
+from common.config import parse_config, parse_reading, parse_timing
 from common.logger import EventLog
 from common.rules import RuleEngine
 
@@ -43,7 +43,9 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    rules = parse_config(Path(args.config).read_text())
+    config_text = Path(args.config).read_text()
+    rules = parse_config(config_text)
+    timing = parse_timing(config_text)
     if not rules:
         sys.exit(f"no rules found in {args.config}")
 
@@ -57,6 +59,10 @@ def main() -> None:
         ser = serial.Serial(args.port, args.baud, timeout=1)
     except serial.SerialException as exc:
         sys.exit(f"cannot open {args.port}: {exc}")
+
+    # Retune the ESP32 without reflashing it.
+    if timing.sample_interval is not None:
+        ser.write(f"set interval {int(timing.sample_interval * 1000)}\n".encode())
 
     with EventLog(args.log) as log:
         log.note("v0 baseline started")

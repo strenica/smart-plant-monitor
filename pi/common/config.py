@@ -88,6 +88,59 @@ class Reading:
         raise KeyError(f"unknown field {field!r}")
 
 
+_TIMING_RE = re.compile(r"^(?P<key>[a-z_]+)\s*=\s*(?P<value>-?\d+(?:\.\d+)?)$")
+
+# Every interval configuration.txt may set, in seconds. Anything else is
+# rejected rather than ignored, so a typo is reported instead of silently
+# leaving the compiled default in place.
+TIMING_KEYS = (
+    "sample_interval",   # how often the ESP32 samples
+    "image_interval",    # how often the Pi takes a picture (V1)
+    "heartbeat",         # how often the Pi photographs when nothing happens (V2)
+    "adaptive_fast",     # interval while the readings are moving (V2, V3)
+    "adaptive_slow",     # interval after three quiet samples (V2, V3)
+)
+
+
+@dataclass(frozen=True)
+class Timing:
+    """Intervals from configuration.txt. None means "use the variant default"."""
+
+    sample_interval: float | None = None
+    image_interval: float | None = None
+    heartbeat: float | None = None
+    adaptive_fast: float | None = None
+    adaptive_slow: float | None = None
+
+
+def parse_timing(text: str) -> Timing:
+    """Read the `key = value` lines from configuration.txt.
+
+    Rule lines are ignored here; parse_config handles those. Both live in the
+    same file because there is only one thing to edit when tuning the system.
+    """
+    values: dict[str, float] = {}
+
+    for lineno, raw in enumerate(text.splitlines(), start=1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+
+        match = _TIMING_RE.match(line)
+        if not match:
+            continue   # a rule line
+
+        key = match["key"]
+        if key not in TIMING_KEYS:
+            raise ValueError(
+                f"line {lineno}: unknown setting {key!r}, "
+                f"expected one of {', '.join(TIMING_KEYS)}"
+            )
+        values[key] = float(match["value"])
+
+    return Timing(**values)
+
+
 def parse_config(text: str) -> list[Rule]:
     """Parse configuration.txt. Blank lines and # comments are skipped.
 
@@ -102,6 +155,8 @@ def parse_config(text: str) -> list[Rule]:
 
         match = _RULE_RE.match(line)
         if not match:
+            if _TIMING_RE.match(line):
+                continue   # a timing setting, handled by parse_timing
             raise ValueError(f"line {lineno}: cannot parse {raw!r}")
 
         field = match["field"]
