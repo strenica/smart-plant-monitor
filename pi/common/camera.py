@@ -196,7 +196,13 @@ def open_camera(settings: CameraSettings):
 
     cam.configure(
         cam.create_video_configuration(
-            main={"size": settings.size, "format": "BGR888"},
+            # "RGB888" is not a typo. picamera2 hands back the array in the
+            # order the format names, and OpenCV reads index 0 as blue. Asking
+            # for "BGR888" therefore gives OpenCV red where it expects blue,
+            # which turns a terracotta pot blue and a dead brown leaf blue.
+            # Measured on this module: BGR888 gave B=98 R=51 for a terracotta
+            # pot, RGB888 gave B=52 R=99, which is the correct brown.
+            main={"size": settings.size, "format": "RGB888"},
             sensor={"output_size": settings.sensor_mode, "bit_depth": 10},
         )
     )
