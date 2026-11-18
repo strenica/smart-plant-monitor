@@ -146,6 +146,13 @@ unwatched.
 The flag lives in the ESP32's RTC memory and is cleared once framing is done, so
 the next boot goes straight to monitoring. A power cycle clears it too.
 
+In V3 the Pi is halted, so the ESP32 wakes it on a cold boot and then stays
+awake until the Pi says `mode run`. Without that it would deep sleep before the
+Pi finished booting, the flag would never clear, and every later boot would land
+in the preview again. Setup mode is also the only moment the two nodes are awake
+together, so it is when the supervisor hands the ESP32 the intervals from
+`configuration.txt`.
+
 ## Dashboard
 
 ```bash
@@ -156,6 +163,11 @@ installs a small web UI on port 8081: the latest sensor values, the event log,
 and an editor for `configuration.txt` that validates before saving. It shows the
 last frame the scanner analysed rather than a live stream, because only one
 process can hold the camera and the monitoring loop needs it.
+
+Saving restarts `plant-monitor`, because the variant loops read the config once
+at startup and a saved file otherwise does nothing until the next reboot. The
+restart is skipped while the camera preview is up, since the preview runs under
+that same unit and restarting it would kill a framing session mid-way.
 
 ## configuration.txt
 

@@ -80,6 +80,14 @@ can take over.
 It ends on **save and apply**, or after five minutes with no browser, and the
 loop starts afterwards either way.
 
+This is the only variant where the Pi is off when you press EN, so the ESP32
+wakes it and then stays awake until the Pi answers `mode run`. Sleeping in
+between would leave the setup flag set and every later boot would land in the
+preview again. It is also the only moment the two nodes are awake together,
+which makes it the only chance to hand the ESP32 the intervals from
+`configuration.txt` — the supervisor does that just before `mode run`. Change
+the interval by pressing EN, editing the config, and applying.
+
 ```bash
 .venv/bin/python tools/supervisor.py --variant v3_deepsleep
 ```

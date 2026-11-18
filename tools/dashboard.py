@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import argparse
 import html
+import socket
+import subprocess
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -43,6 +45,44 @@ from common.config import parse_config, parse_timing  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 
 FIELDS = ("air_humidity", "air_temperature", "soil_humidity")
+
+MONITOR_UNIT = "plant-monitor.service"
+PREVIEW_PORT = 8080
+
+
+def preview_running() -> bool:
+    """True while the setup preview holds the camera.
+
+    The preview runs under the monitor unit, so restarting the monitor would
+    kill a framing session the user is in the middle of.
+    """
+    with socket.socket() as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex(("127.0.0.1", PREVIEW_PORT)) == 0
+
+
+def restart_monitor() -> str:
+    """Apply a saved config by restarting the monitoring service.
+
+    The variant loops read configuration.txt once at startup, so a saved file
+    does nothing until the process is replaced. The dashboard unit runs as
+    root, which is what makes this possible without a password.
+    """
+    try:
+        result = subprocess.run(
+            ["systemctl", "restart", MONITOR_UNIT],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"monitor not restarted: {exc}"
+
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        return f"monitor not restarted: {detail or result.returncode}"
+    return "monitor restarted"
+
 
 STYLE = """
   :root { color-scheme: dark; }
@@ -161,11 +201,24 @@ def make_handler(log_path: Path, config_path: Path, capture_path: Path):
                 return
 
             config_path.write_text(text)
+
+            restart = not preview_running()
+            note = (
+                "monitor restarting"
+                if restart
+                else "preview is running, monitor left alone"
+            )
             self._config(
                 text=text,
                 saved=f"saved: {len(rules)} rules, "
-                f"{sum(v is not None for v in vars(timing).values())} timing keys",
+                f"{sum(v is not None for v in vars(timing).values())} timing keys; "
+                f"{note}",
             )
+
+            if restart:
+                # After the response, so a restart that halts the Pi cannot cut
+                # the reply off halfway.
+                print(restart_monitor(), flush=True)
 
         def _status(self) -> None:
             lines = read_lines(log_path, 400)

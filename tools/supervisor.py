@@ -43,6 +43,7 @@ if _pi_root is not None:
     sys.path.insert(0, str(_pi_root))
 
 from common import SETUP_EXIT  # noqa: E402
+from common.config import parse_timing  # noqa: E402
 
 
 def ask_mode(port: str, baud: int, timeout: float = 5.0) -> str:
@@ -86,6 +87,30 @@ def tell_esp32(port: str, baud: int, command: str) -> None:
         ser.close()
 
 
+def push_timing(port: str, baud: int, config_path: Path) -> None:
+    """Send the intervals from configuration.txt to the ESP32.
+
+    Only lands while the ESP32 is awake, which in V3 means setup mode: the rest
+    of the time it is deep asleep and keeps whatever it already had. Best
+    effort, like every other command on this link.
+    """
+    try:
+        timing = parse_timing(config_path.read_text())
+    except (OSError, ValueError) as exc:
+        print(f"cannot read {config_path}: {exc}", flush=True)
+        return
+
+    if timing.sample_interval is not None:
+        tell_esp32(port, baud, f"set interval {int(timing.sample_interval * 1000)}")
+    if timing.adaptive_fast is not None and timing.adaptive_slow is not None:
+        tell_esp32(
+            port,
+            baud,
+            f"set adaptive {int(timing.adaptive_fast * 1000)} "
+            f"{int(timing.adaptive_slow * 1000)}",
+        )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--variant", required=True, help="folder under variants/")
@@ -125,6 +150,10 @@ def main() -> None:
                     str(args.setup_timeout),
                 ]
             )
+            # The ESP32 is awake right now, which is the only chance to hand it
+            # the intervals from configuration.txt. In V3 it is asleep the rest
+            # of the time, so this is the only path that ever reaches it.
+            push_timing(args.port, args.baud, ROOT / "config" / "configuration.txt")
             # Framing is done, one way or another. Clear the flag so the next
             # boot goes straight to monitoring.
             tell_esp32(args.port, args.baud, "mode run")

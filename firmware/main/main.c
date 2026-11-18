@@ -231,6 +231,15 @@ void app_main(void)
         s_clock_ms += interval_ms;
 
 #if DEEP_SLEEP_BETWEEN_SAMPLES
+        if (s_setup_mode) {
+            // The Pi is framing the camera and has to be able to reach us: it
+            // asks "mode?" at boot and sends "mode run" when it is done.
+            // Sleeping here would leave the flag set, and every later boot
+            // would land in the preview again.
+            ESP_LOGI(TAG, "setup mode: staying awake");
+            vTaskDelay(pdMS_TO_TICKS(interval_ms));
+            continue;
+        }
         ESP_LOGI(TAG, "deep sleep for %lu ms", (unsigned long)interval_ms);
         esp_sleep_enable_timer_wakeup((uint64_t)interval_ms * 1000);
         esp_deep_sleep_start();

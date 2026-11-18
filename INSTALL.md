@@ -226,6 +226,11 @@ Recent events are listed newest first. How much history is kept is set by
 `log_max_lines` in `configuration.txt` (default 50000, `0` keeps everything);
 the file is trimmed when a run opens it and again whenever it doubles.
 
+Saving restarts `plant-monitor` so the new settings take effect immediately —
+the variant loops read the config once at startup. The restart is skipped while
+the camera preview is running, because the preview lives under that same unit
+and restarting it would end a framing session you are in the middle of.
+
 ## Why systemd
 
 Nothing starts the supervisor on its own otherwise. The whole point of pressing
