@@ -133,6 +133,34 @@ at 115200 baud, and syncs the Pi code.
 Each `variants/<name>/` folder also works on its own:
 `./variants/v1_duty/install.sh`.
 
+### Running the installer on the Pi itself
+
+If you would rather not need the laptop at all, install ESP-IDF on the Pi once
+and then run everything there:
+
+```bash
+# once, on the Pi, with internet
+git clone --depth 1 --branch v5.5.6 --recursive \
+  https://github.com/espressif/esp-idf.git ~/esp/esp-idf
+~/esp/esp-idf/install.sh esp32
+
+# every time after that
+cd ~/plant
+./install.sh v1_duty --local
+```
+
+`--local` skips SSH and rsync entirely: it builds here, flashes `/dev/ttyUSB0`
+here, and installs the units here. The trade-off is build time — a full build
+takes several minutes on a Pi 4 against about one on a laptop. Incremental
+builds after a `variant.h` change are much quicker.
+
+The Pi's address is remembered in `.pi-target` when you install from a laptop,
+so a new network only needs setting once:
+
+```bash
+./install.sh v1_duty --pi admin@192.168.1.42
+```
+
 ### Flashing needs `--no-stub`
 
 The stub flasher fails on this board with "Failed to start stub flasher" at

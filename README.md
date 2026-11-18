@@ -95,7 +95,11 @@ at 115200 baud, and syncs the Pi code:
 ./install.sh v1_duty --pi-only    # Pi code only
 ./install.sh v1_duty --no-flash   # build, do not flash
 ./install.sh v1_duty --service    # also install a systemd unit
+./install.sh v1_duty --local      # build and flash on the Pi itself
+./install.sh v1_duty --pi user@host   # target a different Pi
 ```
+
+`--local` needs ESP-IDF on the Pi; see [INSTALL.md](INSTALL.md).
 
 Each `variants/<name>/` folder also works on its own:
 
