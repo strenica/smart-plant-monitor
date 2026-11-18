@@ -1,0 +1,8 @@
+# Pi-side Python dependencies.
+#
+# The venv is created with --system-site-packages, so picamera2 and numpy come
+# from apt (python3-picamera2, python3-numpy) and are deliberately not listed
+# here. Only the packages that are not in the Debian archive belong below.
+pyserial>=3.5
+onnxruntime>=1.20
+opencv-python>=4.10

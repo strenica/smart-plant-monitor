@@ -1,0 +1,27 @@
+#pragma once
+
+// V3 deep sleep: the ESP32 sleeps between samples and the Pi is off.
+//
+// The ESP32 wakes on its own timer, samples, evaluates the rules locally, and
+// only pulses the Pi's wake line when something is worth reporting. Between
+// events the Pi draws nothing at all, which is where the headline number comes
+// from.
+
+#define VARIANT_NAME "V3 deep sleep"
+
+#define SAMPLE_INTERVAL_MS          60000
+#define ADAPTIVE_INTERVAL           1
+#define RULES_ON_ESP32              1
+#define LIGHT_SLEEP_BETWEEN_SAMPLES 0
+#define DEEP_SLEEP_BETWEEN_SAMPLES  1
+
+#define ADAPTIVE_FAST_MS            60000
+#define ADAPTIVE_SLOW_MS            600000
+#define ADAPTIVE_SOIL_DELTA         20
+#define ADAPTIVE_TEMP_DELTA         1.0f
+#define ADAPTIVE_STABLE_SAMPLES     3
+
+#define RULES_TEXT \
+    "1: air_humidity > 50\n" \
+    "2: air_temperature < 15\n" \
+    "3: soil_humidity < 300\n"

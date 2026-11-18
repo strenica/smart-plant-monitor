@@ -20,7 +20,7 @@ static const char *TAG = "pi_link";
 // Open-drain is exactly right for that: level 1 floats like an open switch,
 // level 0 pulls to ground like a pressed button. It never drives 3.3 V into the
 // Pi, which matters because pin 5 is not a 5 V-tolerant input.
-static void wake_pi(void)
+void pi_link_wake(void)
 {
     gpio_set_level(PIN_PI_WAKE, 1);   // released before the pin becomes an output
     gpio_config_t cfg = {
@@ -32,21 +32,21 @@ static void wake_pi(void)
     };
     gpio_config(&cfg);
 
-    // Only press the button on a real start. After a deep-sleep wake the Pi is
-    // already running, and pulsing here would restart it on every cycle.
-    if (esp_reset_reason() != ESP_RST_DEEPSLEEP) {
-        ESP_LOGI(TAG, "pulsing Pi wake line");
-        gpio_set_level(PIN_PI_WAKE, 0);
-        vTaskDelay(pdMS_TO_TICKS(WAKE_PULSE_MS));
-        gpio_set_level(PIN_PI_WAKE, 1);
-    } else {
-        ESP_LOGI(TAG, "deep-sleep wake, not pulsing the Pi");
-    }
+    ESP_LOGI(TAG, "pulsing Pi wake line");
+    gpio_set_level(PIN_PI_WAKE, 0);
+    vTaskDelay(pdMS_TO_TICKS(WAKE_PULSE_MS));
+    gpio_set_level(PIN_PI_WAKE, 1);
 }
 
 void pi_link_init(void)
 {
-    wake_pi();
+    // Only press the button on a real start. After a deep-sleep wake the Pi is
+    // already running, and pulsing here would restart it on every cycle.
+    if (esp_reset_reason() != ESP_RST_DEEPSLEEP) {
+        pi_link_wake();
+    } else {
+        ESP_LOGI(TAG, "deep-sleep wake, not pulsing the Pi");
+    }
 
     uart_config_t cfg = {
         .baud_rate  = 115200,

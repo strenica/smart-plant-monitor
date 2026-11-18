@@ -49,6 +49,9 @@ BASE = Path(__file__).resolve().parent
 IMAGE_FILE = "images/pepper_healthy.jpg"
 
 
+_SESSION: tuple[ort.InferenceSession, str] | None = None
+
+
 def load_model() -> tuple[ort.InferenceSession, str]:
     """Return the CPU inference session and its input name.
 
@@ -56,10 +59,13 @@ def load_model() -> tuple[ort.InferenceSession, str]:
     dominate the runtime. The input name is read from the session rather than
     hard-coded, because the bundled export calls it `input.1`.
     """
-    session = ort.InferenceSession(
-        str(BASE / "u2netp.onnx"), providers=["CPUExecutionProvider"]
-    )
-    return session, session.get_inputs()[0].name
+    global _SESSION
+    if _SESSION is None:
+        session = ort.InferenceSession(
+            str(BASE / "u2netp.onnx"), providers=["CPUExecutionProvider"]
+        )
+        _SESSION = (session, session.get_inputs()[0].name)
+    return _SESSION
 
 
 def prepare_image(image: np.ndarray) -> np.ndarray:
@@ -111,6 +117,29 @@ def make_leaf_masks(saliency: np.ndarray, image: np.ndarray) -> list[np.ndarray]
     return split_leaf_masks(clean)
 
 
+def analyse(image: np.ndarray) -> tuple[list[np.ndarray], list[dict]]:
+    """Run the whole pipeline on one frame.
+
+    Returns the masks and one result per leaf, so a caller that only wants the
+    verdict (the V1 loop) does not have to reimplement the pipeline.
+    """
+    session, input_name = load_model()
+    saliency = infer_map(session, input_name, image)
+    masks = make_leaf_masks(saliency, image)
+
+    results = []
+    for number, mask in enumerate(masks, 1):
+        fractions = color_fracs(image, mask)
+        results.append(
+            {
+                "number": number,
+                "fractions": fractions,
+                "condition": health_from_colors(fractions),
+            }
+        )
+    return masks, results
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--image", default=IMAGE_FILE, help="path relative to this folder")
@@ -134,24 +163,21 @@ def main() -> None:
         source = args.image
 
     started = time.perf_counter()
-    session, input_name = load_model()
-    saliency = infer_map(session, input_name, image)
-    masks = make_leaf_masks(saliency, image)
+    masks, results = analyse(image)
     elapsed = time.perf_counter() - started
 
     print(f"source: {source}  working size: {image.shape[1]}x{image.shape[0]}")
     print(f"regions: {len(masks)}  pipeline: {elapsed:.2f} s")
 
     lines = []
-    if not masks:
+    if not results:
         print("No leaf-like regions detected.")
-    for number, mask in enumerate(masks, 1):
-        fractions = color_fracs(image, mask)
-        condition = health_from_colors(fractions)
+    for result in results:
+        fractions = result["fractions"]
         text = (
-            f"Leaf {number}: G={fractions['green']:.2f} "
+            f"Leaf {result['number']}: G={fractions['green']:.2f} "
             f"Y={fractions['yellow']:.2f} B={fractions['brown']:.2f} "
-            f"{condition}"
+            f"{result['condition']}"
         )
         print(text)
         lines.append(text)

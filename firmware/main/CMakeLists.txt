@@ -5,6 +5,7 @@ idf_component_register(
         "dht11.c"
         "buzzer.c"
         "pi_link.c"
+        "rules.c"
     INCLUDE_DIRS "."
     PRIV_REQUIRES
         esp_driver_gpio
@@ -12,4 +13,5 @@ idf_component_register(
         esp_driver_ledc
         esp_adc
         esp_timer
+        esp_hw_support
 )

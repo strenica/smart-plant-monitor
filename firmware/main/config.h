@@ -61,3 +61,11 @@
 
 // How many times to retry a failed DHT11 read before giving up on that sample.
 #define DHT_RETRIES 3
+
+// ---------------------------------------------------------------------------
+// Everything that differs between the four variants lives in variant.h, which
+// install.sh copies in from variants/<name>/ before building. Keeping it out of
+// this file means one firmware source serves the whole ladder, and the diff
+// between two variants is a single small header.
+// ---------------------------------------------------------------------------
+#include "variant.h"

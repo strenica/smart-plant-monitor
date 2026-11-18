@@ -9,6 +9,11 @@
 // wake does not restart a Pi that is already running.
 void pi_link_init(void);
 
+// Pulse the Pi's wake line: 250 ms open-drain low on GPIO25, which the Pi sees
+// as a press of its power button. V3 calls this when a rule fires, because the
+// Pi is powered off the rest of the time.
+void pi_link_wake(void);
+
 // Send one line to the Pi. A newline is appended.
 void pi_link_send(const char *text);
 
