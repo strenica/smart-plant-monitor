@@ -31,6 +31,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 import cv2
 
@@ -222,6 +223,8 @@ PAGE = """<!doctype html>
                           font-size:12px }
   #leafpanel .leaf { background:#202020; border:1px solid #333; border-radius:6px;
                      padding:8px; margin-bottom:8px; font-size:13px }
+  #leafpanel .help { color:#999; font-size:12.5px; line-height:1.5;
+                     margin:0 0 10px }
   .muted { color:#777 }
 </style></head>
 <body>
@@ -261,10 +264,19 @@ PAGE = """<!doctype html>
 <aside id="leafpanel">
   <div class="row">
     <b>leaf check</b>
-    <button id="leaffreeze">freeze frame</button>
     <button id="leafclose">close</button>
   </div>
-  <div id="leafmsg" class="muted">freeze a frame to measure it</div>
+  <p class="help">
+    Point the camera at a leaf and press <b>freeze frame</b>. The model finds
+    the leaf once; the sliders then re-colour that same frame instantly, so you
+    can see which band the leaf lands in. Copy the numbers into the dashboard's
+    vision page to keep them.
+  </p>
+  <div class="row">
+    <button id="leaffreeze">freeze frame</button>
+    <button id="leafreset">reset to defaults</button>
+  </div>
+  <div id="leafmsg" class="muted">nothing measured yet</div>
   <img id="leafimg" alt="leaf regions" style="display:none">
   <div id="leafbands"></div>
   <div id="leafout"></div>
@@ -494,6 +506,14 @@ document.getElementById('leaffreeze').onclick = async () => {
   leafSliders(data.bands);
   leafShow(data);
 };
+
+document.getElementById('leafreset').onclick = async () => {
+  const r = await fetch('/leaf/reset', { method: 'POST' });
+  const data = await r.json();
+  if (data.error) { leafMsg.textContent = data.error; return; }
+  leafSliders(data.bands);
+  leafShow(data);
+};
 </script>
 </body></html>
 """
@@ -569,8 +589,8 @@ def make_handler(state: LiveState):
             self._leaf_render(results)
             self._json(self._leaf_payload(bands, results))
 
-        def _leaf_bands(self, body: dict) -> None:
-            """Re-classify the frozen frame with the sliders' bands."""
+        def _leaf_classify(self, bands: dict) -> None:
+            """Re-classify the frozen frame with the given bands and reply."""
             with state.lock:
                 cached = state.leaf
             if cached is None:
@@ -578,7 +598,6 @@ def make_handler(state: LiveState):
                 return
 
             leafs = load_leafs()
-            bands = bands_from_body(body, cached["bands"])
             results = []
             for number, mask in enumerate(cached["masks"], 1):
                 fractions = leafs.color_fracs(cached["array"], mask, bands)
@@ -595,6 +614,19 @@ def make_handler(state: LiveState):
                 state.leaf["bands"] = bands
             self._leaf_render(results)
             self._json(self._leaf_payload(bands, results))
+
+        def _leaf_bands(self, body: dict) -> None:
+            """Re-classify the frozen frame with the sliders' bands."""
+            with state.lock:
+                cached = state.leaf
+            if cached is None:
+                self._json({"error": "freeze a frame first"}, 409)
+                return
+            self._leaf_classify(bands_from_body(body, cached["bands"]))
+
+        def _leaf_reset(self) -> None:
+            """Put the bands back to whatever config/vision.json says."""
+            self._leaf_classify(load_leafs().load_bands())
 
         def _leaf_render(self, results: list) -> None:
             """Redraw the annotated frame so the panel shows what it measured."""
@@ -613,17 +645,21 @@ def make_handler(state: LiveState):
 
         def do_GET(self) -> None:
             state.last_request = time.monotonic()
-            if self.path in ("/", "/index.html"):
+            # Match on the path alone. The leaf panel appends a cache-busting
+            # query string to the overlay URL, and comparing self.path directly
+            # would 404 on it and show a broken image.
+            path = urlparse(self.path).path
+            if path in ("/", "/index.html"):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(page)))
                 self.end_headers()
                 self.wfile.write(page)
 
-            elif self.path == "/settings":
+            elif path == "/settings":
                 self._json(state.snapshot())
 
-            elif self.path == "/leaf/overlay.jpg":
+            elif path == "/leaf/overlay.jpg":
                 with state.lock:
                     cached = state.leaf
                     overlay = cached.get("overlay") if cached else None
@@ -636,7 +672,7 @@ def make_handler(state: LiveState):
                 self.end_headers()
                 self.wfile.write(overlay)
 
-            elif self.path == "/snap":
+            elif path == "/snap":
                 with state.lock:
                     frame = state.frame
                 if frame is None:
@@ -648,7 +684,7 @@ def make_handler(state: LiveState):
                 self.end_headers()
                 self.wfile.write(frame)
 
-            elif self.path == "/stream":
+            elif path == "/stream":
                 self.send_response(200)
                 self.send_header(
                     "Content-Type", "multipart/x-mixed-replace; boundary=frame"
@@ -694,6 +730,9 @@ def make_handler(state: LiveState):
 
             elif self.path == "/leaf/bands":
                 self._leaf_bands(body)
+
+            elif self.path == "/leaf/reset":
+                self._leaf_reset()
 
             elif self.path == "/save":
                 with state.lock:
