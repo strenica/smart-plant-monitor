@@ -225,6 +225,9 @@ PAGE = """<!doctype html>
                      padding:8px; margin-bottom:8px; font-size:13px }
   #leafpanel .help { color:#999; font-size:12.5px; line-height:1.5;
                      margin:0 0 10px }
+  #leafpanel details { margin-top:10px; border-top:1px solid #2a2a2a;
+                       padding-top:10px }
+  #leafpanel summary { cursor:pointer; color:#8ab4f8; margin-bottom:8px }
   .muted { color:#777 }
 </style></head>
 <body>
@@ -266,20 +269,32 @@ PAGE = """<!doctype html>
     <b>leaf check</b>
     <button id="leafclose">close</button>
   </div>
+
   <p class="help">
-    Point the camera at a leaf and press <b>freeze frame</b>. The model finds
-    the leaf once; the sliders then re-colour that same frame instantly, so you
-    can see which band the leaf lands in. Copy the numbers into the dashboard's
-    vision page to keep them.
+    <b>1.</b> Point the camera at the leaf.<br>
+    <b>2.</b> Press <b>freeze frame</b>.<br>
+    <b>3.</b> Tell it what the leaf is.
   </p>
+
   <div class="row">
     <button id="leaffreeze">freeze frame</button>
-    <button id="leafreset">reset to defaults</button>
   </div>
+
   <div id="leafmsg" class="muted">nothing measured yet</div>
   <img id="leafimg" alt="leaf regions" style="display:none">
-  <div id="leafbands"></div>
+
+  <div class="row" id="leafteach" style="display:none">
+    <button id="leafhealthy">this leaf is healthy</button>
+    <button id="leafdead">this leaf is dead</button>
+  </div>
+
   <div id="leafout"></div>
+
+  <details id="leaftune" style="display:none">
+    <summary>fine tune the bands</summary>
+    <div id="leafbands"></div>
+    <button id="leafreset">reset to defaults</button>
+  </details>
 </aside>
 
 <script>
@@ -474,6 +489,8 @@ function leafShow(data) {
   leafMsg.textContent = '';
   leafImg.style.display = 'block';
   leafImg.src = '/leaf/overlay.jpg?' + Date.now();
+  document.getElementById('leafteach').style.display = 'flex';
+  document.getElementById('leaftune').style.display = 'block';
   leafOut.innerHTML = data.leaves.map(l => {
     const f = l.fractions;
     return '<div class="leaf"><b>leaf ' + l.number + '</b> \u2014 ' + l.condition +
@@ -483,6 +500,20 @@ function leafShow(data) {
       ' V ' + l.hsv[2] + '</span></div>';
   }).join('') || '<div class="muted">no leaf regions found</div>';
 }
+
+async function leafTeach(label) {
+  const r = await fetch('/leaf/teach', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ label: label })
+  });
+  const data = await r.json();
+  if (data.error) { leafMsg.textContent = data.error; return; }
+  leafSliders(data.bands);
+  leafShow(data);
+}
+
+document.getElementById('leafhealthy').onclick = () => leafTeach('green');
+document.getElementById('leafdead').onclick = () => leafTeach('brown');
 
 async function leafSend() {
   if (!leafBandsState) return;
@@ -628,6 +659,39 @@ def make_handler(state: LiveState):
             """Put the bands back to whatever config/vision.json says."""
             self._leaf_classify(load_leafs().load_bands())
 
+        def _leaf_teach(self, body: dict) -> None:
+            """Move a band onto the leaf's measured hue.
+
+            One click instead of asking the user to reason about hue numbers:
+            "this leaf is dead" shifts the brown band so the leaf lands in it.
+            The band keeps its width, so the three stay disjoint — widening
+            brown to reach hue 103 would swallow yellow and green as well.
+            """
+            label = body.get("label")
+            if label not in ("green", "yellow", "brown"):
+                self._json({"error": "label must be green, yellow or brown"}, 400)
+                return
+
+            with state.lock:
+                cached = state.leaf
+            if cached is None:
+                self._json({"error": "freeze a frame first"}, 409)
+                return
+
+            leafs = load_leafs()
+            bands = {name: dict(band) for name, band in cached["bands"].items()}
+            band = bands[label]
+            low, high = band["hue"]
+            # A band narrower than this misses the spread of a real leaf, so
+            # the fraction comes out partial and the verdict flickers.
+            width = max(30, high - low)
+
+            hue = leafs.mean_hsv(cached["array"], cached["masks"][0])[0]
+            new_low = max(0, min(179 - width, int(round(hue)) - width // 2))
+            band["hue"] = (new_low, new_low + width)
+
+            self._leaf_classify(bands)
+
         def _leaf_render(self, results: list) -> None:
             """Redraw the annotated frame so the panel shows what it measured."""
             with state.lock:
@@ -733,6 +797,9 @@ def make_handler(state: LiveState):
 
             elif self.path == "/leaf/reset":
                 self._leaf_reset()
+
+            elif self.path == "/leaf/teach":
+                self._leaf_teach(body)
 
             elif self.path == "/save":
                 with state.lock:
