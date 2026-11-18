@@ -102,6 +102,9 @@ def main() -> None:
                 f"G={fractions['green']:.2f} "
                 f"Y={fractions['yellow']:.2f} "
                 f"B={fractions['brown']:.2f} "
+                f"H={result['hsv'][0]:.0f} "
+                f"S={result['hsv'][1]:.0f} "
+                f"V={result['hsv'][2]:.0f} "
                 f"{result['condition']}"
             )
         print(f"\n  vision ({why}): {len(results)} leaf region(s)")

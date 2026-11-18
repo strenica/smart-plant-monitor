@@ -24,6 +24,7 @@ species and the thresholds all move it.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -38,7 +39,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.camera import CameraSettings, capture as camera_capture
 
 from helpers import (
-    color_fracs,
     draw_overlay,
     health_from_colors,
     read_and_resize,
@@ -47,6 +47,85 @@ from helpers import (
 
 BASE = Path(__file__).resolve().parent
 IMAGE_FILE = "images/pepper_healthy.jpg"
+
+# pi/vision/leafs.py -> pi/vision -> pi -> project root
+VISION_PATH = BASE.parents[1] / "config" / "vision.json"
+
+# The provided rule set, used when config/vision.json is missing. Same bands as
+# helpers.color_fracs, spelled out so the two can be compared.
+DEFAULT_BANDS = {
+    "green": {"hue": (35, 85), "sat": 30, "val": 30},
+    "yellow": {"hue": (20, 34), "sat": 20, "val": 40},
+    "brown": {"hue": (5, 24), "sat": 0, "val": 0, "val_max": 200},
+}
+
+
+def load_bands(path: str | Path | None = None) -> dict:
+    """Read the colour bands from config/vision.json.
+
+    Falls back to the provided rule set when the file is absent, so a checkout
+    without one behaves exactly as before.
+    """
+    config_path = Path(path) if path else VISION_PATH
+    if not config_path.exists():
+        return DEFAULT_BANDS
+
+    data = json.loads(config_path.read_text())
+    bands = {}
+    for name, default in DEFAULT_BANDS.items():
+        entry = data.get(name, {})
+        hue = entry.get("hue", default["hue"])
+        band = {
+            "hue": (int(hue[0]), int(hue[1])),
+            "sat": int(entry.get("sat", default["sat"])),
+            "val": int(entry.get("val", default["val"])),
+        }
+        if "val_max" in entry or "val_max" in default:
+            band["val_max"] = int(entry.get("val_max", default.get("val_max", 255)))
+        bands[name] = band
+    return bands
+
+
+def color_fracs(img_bgr: np.ndarray, mask: np.ndarray, bands: dict) -> dict:
+    """Fraction of the masked pixels falling in each colour band.
+
+    Same shape as helpers.color_fracs, but the bands come from config so they
+    can be tuned without editing code. The provided bands stop at hue 85, so a
+    leaf that reads bluer than that scores zero on all three and the verdict
+    falls through to "borderline" with no explanation.
+    """
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    inside = mask == 255
+    total = float(np.count_nonzero(inside))
+    if total == 0:
+        return {name: 0.0 for name in bands}
+
+    h = hsv[..., 0][inside]
+    s = hsv[..., 1][inside]
+    v = hsv[..., 2][inside]
+
+    fractions = {}
+    for name, band in bands.items():
+        low, high = band["hue"]
+        hit = (h >= low) & (h <= high) & (s >= band["sat"]) & (v >= band["val"])
+        if "val_max" in band:
+            hit &= v <= band["val_max"]
+        fractions[name] = float(np.count_nonzero(hit)) / total
+    return fractions
+
+
+def mean_hsv(img_bgr: np.ndarray, mask: np.ndarray) -> tuple[float, float, float]:
+    """Median hue, saturation and value inside the mask.
+
+    Median rather than mean because hue wraps at 179, and a leaf with a few
+    pixels either side of the wrap would average to something meaningless.
+    """
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    inside = mask == 255
+    if not np.count_nonzero(inside):
+        return (0.0, 0.0, 0.0)
+    h, s, v = np.median(hsv[inside], axis=0)
+    return (float(h), float(s), float(v))
 
 
 _SESSION: tuple[ort.InferenceSession, str] | None = None
@@ -117,23 +196,29 @@ def make_leaf_masks(saliency: np.ndarray, image: np.ndarray) -> list[np.ndarray]
     return split_leaf_masks(clean)
 
 
-def analyse(image: np.ndarray) -> tuple[list[np.ndarray], list[dict]]:
+def analyse(
+    image: np.ndarray, bands: dict | None = None
+) -> tuple[list[np.ndarray], list[dict]]:
     """Run the whole pipeline on one frame.
 
     Returns the masks and one result per leaf, so a caller that only wants the
-    verdict (the V1 loop) does not have to reimplement the pipeline.
+    verdict (the V1 loop) does not have to reimplement the pipeline. Each result
+    carries the measured HSV as well as the fractions: a verdict with no numbers
+    behind it cannot be tuned.
     """
     session, input_name = load_model()
     saliency = infer_map(session, input_name, image)
     masks = make_leaf_masks(saliency, image)
+    bands = bands or load_bands()
 
     results = []
     for number, mask in enumerate(masks, 1):
-        fractions = color_fracs(image, mask)
+        fractions = color_fracs(image, mask, bands)
         results.append(
             {
                 "number": number,
                 "fractions": fractions,
+                "hsv": mean_hsv(image, mask),
                 "condition": health_from_colors(fractions),
             }
         )
@@ -151,7 +236,8 @@ def annotate(image: np.ndarray, masks: list[np.ndarray], results: list[dict]) ->
         f"Leaf {r['number']}: {r['condition']}  "
         f"G={r['fractions']['green']:.2f} "
         f"Y={r['fractions']['yellow']:.2f} "
-        f"B={r['fractions']['brown']:.2f}"
+        f"B={r['fractions']['brown']:.2f}  "
+        f"H={r['hsv'][0]:.0f} S={r['hsv'][1]:.0f} V={r['hsv'][2]:.0f}"
         for r in results
     ]
     annotated, _ = draw_overlay(image, masks, lines)

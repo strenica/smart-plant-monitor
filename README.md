@@ -240,6 +240,34 @@ samples it reports `healthy-ish` for both the healthy pepper and the bacterial
 spot one, because the spots are a small fraction of leaf area. That is a
 limitation of the rule, not a bug in the model.
 
+### Calibrating the colour rule
+
+The hue bands live in `config/vision.json` and are editable from the dashboard's
+**vision** page. Hue is OpenCV's 0..179 scale, so 30 is 60 degrees; saturation
+and value are 0..255.
+
+Every leaf logs its measured `H`, `S` and `V` alongside the fractions:
+
+```
+vision leaf 1: G=0.00 Y=0.00 B=0.74 H=19 S=16 V=122 stressed-ish
+```
+
+That is what you tune against. A leaf scoring zero on all three bands has a hue
+outside every range, and the numbers tell you which way to widen.
+
+Two things make the measurement unstable, and both are settings:
+
+- **`awb`** in `config/camera.json`. Auto white balance re-decides per capture,
+  and on a dark leaf it can pick a large blue gain — enough to turn a brown leaf
+  blue. Set `"awb": "off"` with `colour_gains` to lock it. Two captures then
+  measure identically, which is the only way a band means anything.
+- **`autofocus`**. With it off the lens sits at infinity, the leaf is a blurry
+  blob, and the average colour is a blend of leaf and background.
+
+A very dark leaf is hard for any colour rule: the signal is low, so the
+illuminant and the sensor noise dominate the hue. Bright, even lighting and a
+leaf that fills the frame give the rule the best chance.
+
 **`u2netp.onnx` is not in this repo** — its provenance and licence are not
 recorded in the source project, so it is not redistributed. Unzip
 `leafs-starter.zip` and copy it into `pi/vision/`.

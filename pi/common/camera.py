@@ -42,6 +42,12 @@ class CameraSettings:
     # badly out of focus. Continuous autofocus fixes it but hunts, and hunting
     # costs energy, so it is a setting rather than always-on.
     autofocus: bool = True
+    # Auto white balance picks its own gains per capture, and on a dark leaf it
+    # picks a large blue gain, which is enough to turn brown into blue. Locking
+    # the gains makes the colour stable, which is what the hue bands in
+    # config/vision.json are tuned against.
+    awb: str = "auto"
+    colour_gains: tuple[float, float] = (1.0, 1.0)
     preview: bool = True
     preview_port: int = 8080
     preview_fps: int = 15
@@ -61,6 +67,8 @@ class CameraSettings:
             zoom=float(data.get("zoom", 1.0)),
             crop=tuple(data.get("crop", (0.0, 0.0, 1.0, 1.0))),
             autofocus=bool(data.get("autofocus", True)),
+            awb=str(data.get("awb", "auto")),
+            colour_gains=tuple(data.get("colour_gains", (1.0, 1.0))),
             preview=bool(data.get("preview", True)),
             preview_port=int(data.get("preview_port", 8080)),
             preview_fps=int(data.get("preview_fps", 15)),
@@ -98,6 +106,18 @@ class CameraSettings:
                 "Continuous autofocus. Without it the lens stays at infinity and "
                 "a leaf held close is badly blurred. Hunting costs energy, so "
                 "turn it off once the camera is fixed in place."
+            ),
+            "awb": self.awb,
+            "_awb_note": (
+                "'auto' lets the camera pick white balance per capture, which on "
+                "a dark leaf can pick a large blue gain and turn brown into blue. "
+                "'off' locks colour_gains, so the hue is stable and the bands in "
+                "vision.json mean something."
+            ),
+            "colour_gains": list(self.colour_gains),
+            "_colour_gains_note": (
+                "Only used when awb is 'off'. [red, blue] multipliers. 1.0 is no "
+                "correction. Raise red to warm the image, raise blue to cool it."
             ),
             "preview": self.preview,
             "preview_port": self.preview_port,
@@ -185,6 +205,14 @@ def open_camera(settings: CameraSettings):
         # 2 is continuous. Left alone the lens sits at infinity, which leaves a
         # leaf held close to the camera badly out of focus.
         cam.set_controls({"AfMode": 2, "AfSpeed": 1})
+    if settings.awb == "off":
+        # Auto white balance re-decides per capture, and on a dark leaf it picks
+        # a large blue gain. Locking it keeps the hue comparable between frames,
+        # which is the only way the bands in vision.json can be tuned at all.
+        cam.set_controls({
+            "AwbEnable": False,
+            "ColourGains": tuple(settings.colour_gains),
+        })
     return cam
 
 

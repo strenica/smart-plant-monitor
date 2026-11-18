@@ -22,6 +22,13 @@
   "_zoom_note": "1.0 is the full frame. 2.0 crops to the middle half and scales back up, so it changes framing but not output size.",
   "autofocus": true,
   "_autofocus_note": "Continuous autofocus. Without it the lens stays at infinity and a leaf held close is badly blurred. Hunting costs energy, so turn it off once the camera is fixed in place.",
+  "awb": "auto",
+  "_awb_note": "'auto' lets the camera pick white balance per capture, which on a dark leaf can pick a large blue gain and turn brown into blue. 'off' locks colour_gains, so the hue is stable and the bands in vision.json mean something.",
+  "colour_gains": [
+    1.0,
+    1.0
+  ],
+  "_colour_gains_note": "Only used when awb is 'off'. [red, blue] multipliers. 1.0 is no correction. Raise red to warm the image, raise blue to cool it.",
   "preview": false,
   "preview_port": 8080,
   "preview_fps": 15

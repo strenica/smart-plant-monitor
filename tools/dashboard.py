@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import json
 import socket
 import subprocess
 import sys
@@ -151,13 +152,48 @@ def page(title: str, body: str, active: str) -> bytes:
 <html><head><meta charset="utf-8"><title>{html.escape(title)}</title>
 <style>{STYLE}</style></head><body>
 <nav>{link("/", "status", "status")}{link("/log", "log", "log")}\
-{link("/config", "config", "config")}</nav>
+{link("/config", "config", "config")}{link("/vision", "vision", "vision")}</nav>
 {body}
 </body></html>""".encode()
 
 
+def validate_vision(text: str) -> dict:
+    """Parse and check config/vision.json. Raises ValueError with a reason.
+
+    Checked here rather than in leafs.py because a bad band that parses but
+    makes no sense — a hue range of 200, say — would silently classify nothing
+    and the verdict would just say "borderline" with no clue why.
+    """
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"not valid JSON: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError("expected a JSON object")
+
+    for name in ("green", "yellow", "brown"):
+        band = data.get(name)
+        if not isinstance(band, dict):
+            raise ValueError(f"missing band {name!r}")
+
+        hue = band.get("hue")
+        if not (isinstance(hue, list) and len(hue) == 2):
+            raise ValueError(f"{name}.hue must be [low, high]")
+        low, high = hue
+        if not (isinstance(low, int) and isinstance(high, int)):
+            raise ValueError(f"{name}.hue must be two integers")
+        if not 0 <= low <= high <= 179:
+            raise ValueError(f"{name}.hue must satisfy 0 <= low <= high <= 179")
+
+        for key in ("sat", "val", "val_max"):
+            if key in band and not isinstance(band[key], int):
+                raise ValueError(f"{name}.{key} must be an integer")
+    return data
+
+
 def make_handler(log_path: Path, config_path: Path, capture_path: Path,
-                 analysis_path: Path):
+                 analysis_path: Path, vision_path: Path):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args) -> None:
             pass   # quiet; the variant loop owns the console
@@ -181,6 +217,8 @@ def make_handler(log_path: Path, config_path: Path, capture_path: Path,
                 self._log()
             elif path == "/config":
                 self._config()
+            elif path == "/vision":
+                self._vision()
             elif path == "/capture.jpg":
                 self._image(capture_path, "no capture yet")
             elif path == "/analysis.jpg":
@@ -189,13 +227,27 @@ def make_handler(log_path: Path, config_path: Path, capture_path: Path,
                 self.send_error(404)
 
         def do_POST(self) -> None:
-            if urlparse(self.path).path != "/config":
+            path = urlparse(self.path).path
+            if path not in ("/config", "/vision"):
                 self.send_error(404)
                 return
 
             length = int(self.headers.get("Content-Length", 0))
             form = parse_qs(self.rfile.read(length).decode(errors="replace"))
             text = form.get("text", [""])[0]
+
+            if path == "/vision":
+                try:
+                    validate_vision(text)
+                except ValueError as exc:
+                    self._vision(text=text, error=str(exc))
+                    return
+                vision_path.write_text(text)
+                self._vision(
+                    text=text,
+                    saved="saved; applies to the next capture, no restart needed",
+                )
+                return
 
             # Validate before writing. A config that parses is the only thing
             # that gets saved, so a typo cannot take the monitor down.
@@ -302,6 +354,32 @@ written, so a typo is reported instead of saved.</p>
 </form>"""
             self._send(page("Config", body, "config"))
 
+        def _vision(self, text: str | None = None, error: str = "",
+                    saved: str = "") -> None:
+            if text is None:
+                text = vision_path.read_text() if vision_path.exists() else "{}"
+
+            banner = ""
+            if error:
+                banner = f'<p class="err">not saved: {html.escape(error)}</p>'
+            elif saved:
+                banner = f'<p class="ok">{html.escape(saved)}</p>'
+
+            body = f"""<h1>vision.json</h1>
+<p class="muted">Hue bands for the colour rule, on OpenCV's 0..179 scale, so
+30 is 60 degrees. Saturation and value are 0..255. Ranges are inclusive.
+<code>val_max</code> is an optional upper bound on brightness, which is how
+"brown" is told apart from "orange".</p>
+<p class="muted">Tune these against the numbers in the event log: each leaf
+logs its measured <code>H</code>, <code>S</code> and <code>V</code>. If a leaf
+scores zero on all three bands, its hue is outside every range.</p>
+{banner}
+<form method="post" action="/vision">
+<textarea name="text" spellcheck="false">{html.escape(text)}</textarea>
+<button type="submit">save</button>
+</form>"""
+            self._send(page("Vision", body, "vision"))
+
         def _image(self, source: Path, missing: str) -> None:
             if not source.exists():
                 self.send_error(404, missing)
@@ -318,6 +396,7 @@ def main() -> None:
     ap.add_argument("--config", default=str(ROOT / "config" / "configuration.txt"))
     ap.add_argument("--capture", default=str(ROOT / "logs" / "last_capture.jpg"))
     ap.add_argument("--analysis", default=str(ROOT / "logs" / "last_analysis.jpg"))
+    ap.add_argument("--vision", default=str(ROOT / "config" / "vision.json"))
     args = ap.parse_args()
 
     handler = make_handler(
@@ -325,6 +404,7 @@ def main() -> None:
         Path(args.config),
         Path(args.capture),
         Path(args.analysis),
+        Path(args.vision),
     )
     server = ThreadingHTTPServer(("0.0.0.0", args.port), handler)
     print(f"dashboard on http://<pi-address>:{args.port}/")
