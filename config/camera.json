@@ -1,18 +1,28 @@
 {
   "_comment": "Shared by tools/preview.py and pi/vision/leafs.py, so what you frame in the browser is what the scanner analyses.",
-
-  "size": [1024, 768],
-  "sensor_mode": [2304, 1296],
-
+  "size": [
+    800,
+    600
+  ],
+  "sensor_mode": [
+    2304,
+    1296
+  ],
   "_sensor_mode_note": "2304x1296 uses the whole sensor. The default 1536x864 mode is a centre crop and looks zoomed in.",
-
-  "rotation": 0,
+  "crop": [
+    0.386,
+    0.1317,
+    0.3128,
+    0.6145
+  ],
+  "_crop_note": "Region of interest as [x, y, w, h] in 0..1 fractions. [0, 0, 1, 1] is the whole frame. Cropping here makes the output image genuinely smaller, which is the only size change that saves real work.",
+  "rotation": 180,
   "_rotation_note": "0, 90, 180 or 270 degrees clockwise.",
-
   "zoom": 1.0,
-  "_zoom_note": "1.0 is the full frame. 2.0 crops to the middle half and scales back up.",
-
-  "preview": true,
+  "_zoom_note": "1.0 is the full frame. 2.0 crops to the middle half and scales back up, so it changes framing but not output size.",
+  "autofocus": true,
+  "_autofocus_note": "Continuous autofocus. Without it the lens stays at infinity and a leaf held close is badly blurred. Hunting costs energy, so turn it off once the camera is fixed in place.",
+  "preview": false,
   "preview_port": 8080,
   "preview_fps": 15
 }

@@ -38,6 +38,10 @@ class CameraSettings:
     # (0, 0, 1, 1) means the whole frame. Cropping here produces a genuinely
     # smaller output image, which is what saves encoding work.
     crop: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0)
+    # The lens starts at infinity, which leaves a leaf held close to the camera
+    # badly out of focus. Continuous autofocus fixes it but hunts, and hunting
+    # costs energy, so it is a setting rather than always-on.
+    autofocus: bool = True
     preview: bool = True
     preview_port: int = 8080
     preview_fps: int = 15
@@ -56,6 +60,7 @@ class CameraSettings:
             rotation=int(data.get("rotation", 0)),
             zoom=float(data.get("zoom", 1.0)),
             crop=tuple(data.get("crop", (0.0, 0.0, 1.0, 1.0))),
+            autofocus=bool(data.get("autofocus", True)),
             preview=bool(data.get("preview", True)),
             preview_port=int(data.get("preview_port", 8080)),
             preview_fps=int(data.get("preview_fps", 15)),
@@ -87,6 +92,12 @@ class CameraSettings:
             "_zoom_note": (
                 "1.0 is the full frame. 2.0 crops to the middle half and scales "
                 "back up, so it changes framing but not output size."
+            ),
+            "autofocus": self.autofocus,
+            "_autofocus_note": (
+                "Continuous autofocus. Without it the lens stays at infinity and "
+                "a leaf held close is badly blurred. Hunting costs energy, so "
+                "turn it off once the camera is fixed in place."
             ),
             "preview": self.preview,
             "preview_port": self.preview_port,
@@ -170,15 +181,23 @@ def open_camera(settings: CameraSettings):
         )
     )
     cam.start()
+    if settings.autofocus and "AfMode" in cam.camera_controls:
+        # 2 is continuous. Left alone the lens sits at infinity, which leaves a
+        # leaf held close to the camera badly out of focus.
+        cam.set_controls({"AfMode": 2, "AfSpeed": 1})
     return cam
 
 
-def capture(settings: CameraSettings, settle: float = 2.0) -> np.ndarray:
+def capture(settings: CameraSettings, settle: float | None = None) -> np.ndarray:
     """Grab one transformed frame and release the camera.
 
-    The settle delay is for auto-exposure. Without it the first frame is often
-    dark and every colour fraction is meaningless.
+    The settle delay is for auto-exposure, and for autofocus to hunt to a lock.
+    Without it the first frame is often dark and out of focus, and every colour
+    fraction is meaningless.
     """
+    if settle is None:
+        settle = 4.0 if settings.autofocus else 2.0
+
     cam = open_camera(settings)
     try:
         time.sleep(settle)
