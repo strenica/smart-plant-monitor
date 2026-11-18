@@ -172,6 +172,12 @@ void app_main(void)
 
     xTaskCreate(command_task, "commands", 3072, NULL, 5, NULL);
 
+    if (cold_boot) {
+        // Tell a Pi that is already running. A Pi that is still booting misses
+        // this and asks "mode?" instead, which is why both paths exist.
+        pi_link_send("setup");
+    }
+
     ESP_LOGI(TAG, "--- readings ---");
 
     while (1) {

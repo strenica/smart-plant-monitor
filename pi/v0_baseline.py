@@ -19,9 +19,14 @@ from pathlib import Path
 
 import serial
 
+from common import SETUP_EXIT
 from common.config import parse_config, parse_reading, parse_timing
 from common.logger import EventLog
 from common.rules import RuleEngine
+
+
+class SetupRequested(Exception):
+    """The ESP32 was reset, so the user wants to reframe the camera."""
 
 
 def main() -> None:
@@ -54,6 +59,8 @@ def main() -> None:
         print(f"  {rule}")
 
     engine = RuleEngine(rules, cooldown_s=args.cooldown)
+
+    setup = False
 
     try:
         ser = serial.Serial(args.port, args.baud, timeout=1)
@@ -103,11 +110,17 @@ def main() -> None:
                     flush=True,
                 )
 
+        except SetupRequested:
+            setup = True
+            print("\n  esp32 asked for setup mode")
         except KeyboardInterrupt:
             print()
         finally:
             ser.close()
             log.note("v0 baseline stopped")
+
+    if setup:
+        sys.exit(SETUP_EXIT)
 
 
 if __name__ == "__main__":

@@ -70,10 +70,14 @@ because the Pi is off and there is nobody to resend them.
 
 ## Setup mode
 
-Pressing EN on the ESP32 cold-boots it and puts it in setup mode. The next Pi
-boot then runs the camera preview instead of this variant's loop, so you can
-reframe. It ends on **save and apply**, or after five minutes with no browser,
-and the loop starts afterwards either way.
+Pressing EN on the ESP32 cold-boots it and puts it in setup mode. The camera
+preview then runs instead of this variant's loop, so you can reframe. It works
+whether the Pi is booting or already running: the ESP32 either answers `mode?`
+or sends `setup` over UART2, and this loop exits with code 42 so the supervisor
+can take over.
+
+It ends on **save and apply**, or after five minutes with no browser, and the
+loop starts afterwards either way.
 
 ```bash
 .venv/bin/python tools/supervisor.py --variant v3_deepsleep

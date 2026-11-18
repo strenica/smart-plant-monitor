@@ -20,11 +20,16 @@ from pathlib import Path
 
 import serial
 
+from common import SETUP_EXIT
 from common.config import parse_reading, parse_timing
 from common.logger import EventLog
 
 # leafs.py imports helpers.py as a sibling, so pi/vision has to be on the path.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "vision"))
+
+
+class SetupRequested(Exception):
+    """The ESP32 was reset, so the user wants to reframe the camera."""
 
 
 def main() -> None:
@@ -63,6 +68,8 @@ def main() -> None:
             f"vision on event and every {heartbeat:g} s at "
             f"{settings.size[0]}x{settings.size[1]}"
         )
+
+    setup = False
 
     try:
         ser = serial.Serial(args.port, args.baud, timeout=1)
@@ -116,6 +123,10 @@ def main() -> None:
                 if raw:
                     text = raw.decode(errors="replace").strip()
 
+                    if text == "setup":
+                        log.note("esp32 asked for setup mode")
+                        raise SetupRequested
+
                     if text.startswith("event"):
                         # The ESP32 already buzzed. The Pi's contribution is a
                         # picture of whatever changed.
@@ -147,11 +158,17 @@ def main() -> None:
                     next_heartbeat = time.monotonic() + heartbeat
                     photograph(log, "heartbeat")
 
+        except SetupRequested:
+            setup = True
+            print("\n  esp32 asked for setup mode")
         except KeyboardInterrupt:
             print()
         finally:
             ser.close()
             log.note("v2 adaptive sampling stopped")
+
+    if setup:
+        sys.exit(SETUP_EXIT)
 
 
 if __name__ == "__main__":

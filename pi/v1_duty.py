@@ -20,12 +20,17 @@ from pathlib import Path
 
 import serial
 
+from common import SETUP_EXIT
 from common.config import parse_config, parse_reading, parse_timing
 from common.logger import EventLog
 from common.rules import RuleEngine
 
 # leafs.py imports helpers.py as a sibling, so pi/vision has to be on the path.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "vision"))
+
+
+class SetupRequested(Exception):
+    """The ESP32 was reset, so the user wants to reframe the camera."""
 
 
 def main() -> None:
@@ -89,6 +94,8 @@ def main() -> None:
             f"{settings.size[0]}x{settings.size[1]}"
         )
 
+    setup = False
+
     try:
         ser = serial.Serial(args.port, args.baud, timeout=1)
     except serial.SerialException as exc:
@@ -109,7 +116,12 @@ def main() -> None:
             while True:
                 raw = ser.readline()
                 if raw:
-                    reading = parse_reading(raw.decode(errors="replace"))
+                    text = raw.decode(errors="replace").strip()
+                    if text == "setup":
+                        log.note("esp32 asked for setup mode")
+                        raise SetupRequested
+
+                    reading = parse_reading(text)
                     if reading is not None:
                         # Log every measurement, as the spec asks.
                         if reading.air_humidity is not None:
@@ -160,11 +172,17 @@ def main() -> None:
                             )
                         print(f"\n  vision: {len(results)} leaf region(s)")
 
+        except SetupRequested:
+            setup = True
+            print("\n  esp32 asked for setup mode")
         except KeyboardInterrupt:
             print()
         finally:
             ser.close()
             log.note("v1 fixed duty cycle stopped")
+
+    if setup:
+        sys.exit(SETUP_EXIT)
 
 
 if __name__ == "__main__":

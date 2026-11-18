@@ -29,6 +29,22 @@ import serial
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _find_pi_root() -> Path | None:
+    """Locate the `pi` package whether this runs from tools/ or from ~/plant."""
+    here = Path(__file__).resolve().parent
+    for candidate in (here, *here.parents):
+        if (candidate / "pi" / "common" / "camera.py").exists():
+            return candidate / "pi"
+    return None
+
+
+_pi_root = _find_pi_root()
+if _pi_root is not None:
+    sys.path.insert(0, str(_pi_root))
+
+from common import SETUP_EXIT  # noqa: E402
+
+
 def ask_mode(port: str, baud: int, timeout: float = 5.0) -> str:
     """Ask the ESP32 whether it wants setup mode. Defaults to "run".
 
@@ -88,32 +104,41 @@ def main() -> None:
     if not run.exists():
         sys.exit(f"no such variant: {args.variant}")
 
-    mode = ask_mode(args.port, args.baud)
-    print(f"esp32 mode: {mode}", flush=True)
+    while True:
+        mode = ask_mode(args.port, args.baud)
+        print(f"esp32 mode: {mode}", flush=True)
 
-    if mode == "setup":
-        print(
-            f"setup mode: preview on port {args.preview_port}, "
-            f"giving up after {args.setup_timeout:g} s with no browser",
-            flush=True,
-        )
-        subprocess.run(
-            [
-                sys.executable,
-                str(ROOT / "tools" / "preview.py"),
-                "--force",
-                "--port",
-                str(args.preview_port),
-                "--timeout",
-                str(args.setup_timeout),
-            ]
-        )
-        # Framing is done, one way or another. Clear the flag so the next boot
-        # goes straight to monitoring.
-        tell_esp32(args.port, args.baud, "mode run")
+        if mode == "setup":
+            print(
+                f"setup mode: preview on port {args.preview_port}, "
+                f"giving up after {args.setup_timeout:g} s with no browser",
+                flush=True,
+            )
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "tools" / "preview.py"),
+                    "--force",
+                    "--port",
+                    str(args.preview_port),
+                    "--timeout",
+                    str(args.setup_timeout),
+                ]
+            )
+            # Framing is done, one way or another. Clear the flag so the next
+            # boot goes straight to monitoring.
+            tell_esp32(args.port, args.baud, "mode run")
 
-    print(f"starting {args.variant}", flush=True)
-    subprocess.run([sys.executable, str(run)])
+        print(f"starting {args.variant}", flush=True)
+        result = subprocess.run([sys.executable, str(run)])
+
+        if result.returncode != SETUP_EXIT:
+            break
+
+        # The ESP32 was reset while we were monitoring, so the user wants to
+        # reframe. Loop round: the next pass asks for the mode again and lands
+        # in the preview.
+        print("esp32 was reset, switching to setup mode", flush=True)
 
 
 if __name__ == "__main__":

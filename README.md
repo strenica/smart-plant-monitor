@@ -6,6 +6,8 @@ of each technique can be measured rather than guessed.
 
 Course project for FRI, 2026.
 
+Setting this up from bare boards? See [INSTALL.md](INSTALL.md).
+
 ## Hardware
 
 | Part | Notes |
@@ -119,8 +121,12 @@ cd ~/plant
 
 ## Setup mode: press EN to reframe
 
-Pressing EN on the ESP32 cold-boots it, and it remembers that. On the next Pi
-boot the supervisor asks it what mode it is in:
+Pressing EN on the ESP32 cold-boots it, and it remembers that. Two paths lead
+into setup mode:
+
+- **Pi booting** — the supervisor asks `mode?` and gets `mode setup`.
+- **Pi already running** — the ESP32 sends `setup` over UART2, the variant exits
+  with code 42, and the supervisor switches to the preview.
 
 ```
 esp32 mode: setup
@@ -135,9 +141,6 @@ unwatched.
 
 The flag lives in the ESP32's RTC memory and is cleared once framing is done, so
 the next boot goes straight to monitoring. A power cycle clears it too.
-
-This only works while the Pi is booting. In V0-V2 the Pi is always on, so
-pressing EN does nothing to a running Pi — reboot it to enter setup mode.
 
 ## Dashboard
 
