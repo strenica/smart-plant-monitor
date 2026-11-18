@@ -177,8 +177,10 @@ def make_handler(log_path: Path, config_path: Path, capture_path: Path):
                 for f in FIELDS
             )
 
+            # Newest first: the interesting end of a log is the end.
             recent = "".join(
-                f"<tr><td>{html.escape(line)}</td></tr>" for line in lines[-25:]
+                f"<tr><td>{html.escape(line)}</td></tr>"
+                for line in reversed(lines[-25:])
             ) or '<tr><td class="muted">no log yet</td></tr>'
 
             shot = ""

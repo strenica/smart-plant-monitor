@@ -20,7 +20,12 @@ from pathlib import Path
 import serial
 
 from common import SETUP_EXIT
-from common.config import parse_config, parse_reading, parse_timing
+from common.config import (
+    parse_config,
+    parse_reading,
+    parse_retention,
+    parse_timing,
+)
 from common.logger import EventLog
 from common.rules import RuleEngine
 
@@ -51,6 +56,7 @@ def main() -> None:
     config_text = Path(args.config).read_text()
     rules = parse_config(config_text)
     timing = parse_timing(config_text)
+    retention = parse_retention(config_text)
     if not rules:
         sys.exit(f"no rules found in {args.config}")
 
@@ -71,7 +77,7 @@ def main() -> None:
     if timing.sample_interval is not None:
         ser.write(f"set interval {int(timing.sample_interval * 1000)}\n".encode())
 
-    with EventLog(args.log) as log:
+    with EventLog(args.log, max_lines=retention.log_max_lines) as log:
         log.note("v0 baseline started")
         print(f"logging to {args.log}. ctrl-c to stop.")
 

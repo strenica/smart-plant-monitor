@@ -41,6 +41,7 @@ Set the sampling interval in `config/configuration.txt`; no reflash needed.
 
 ```
 sample_interval = 2      # seconds, pushed to the ESP32 over UART2 at startup
+log_max_lines = 50000    # trim logs/events_log.txt to this many lines, 0 = keep all
 ```
 
 The ESP32 keeps it in RTC memory, so it survives deep sleep but not a power

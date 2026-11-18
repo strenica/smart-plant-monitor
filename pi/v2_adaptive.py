@@ -21,7 +21,7 @@ from pathlib import Path
 import serial
 
 from common import SETUP_EXIT
-from common.config import parse_reading, parse_timing
+from common.config import parse_reading, parse_retention, parse_timing
 from common.logger import EventLog
 
 # leafs.py imports helpers.py as a sibling, so pi/vision has to be on the path.
@@ -113,7 +113,7 @@ def main() -> None:
 
     next_heartbeat = time.monotonic() + heartbeat
 
-    with EventLog(args.log) as log:
+    with EventLog(args.log, max_lines=retention.log_max_lines) as log:
         log.note("v2 adaptive sampling started")
         print(f"logging to {args.log}. ctrl-c to stop.")
 

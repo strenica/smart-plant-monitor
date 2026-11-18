@@ -62,6 +62,7 @@ sample_interval = 10     # ESP32 base interval
 adaptive_fast = 10       # while the readings are moving
 adaptive_slow = 600      # after three quiet samples
 heartbeat = 3600         # Pi photograph when nothing happens
+log_max_lines = 50000    # trim logs/events_log.txt to this many lines, 0 = keep all
 ```
 
 The Pi pushes `sample_interval` and the adaptive bounds over UART2 at startup.

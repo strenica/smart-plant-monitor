@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "vision"))
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--config", default="config/configuration.txt")
     ap.add_argument("--log", default="logs/events_log.txt")
     ap.add_argument(
         "--no-halt",
@@ -32,11 +33,13 @@ def main() -> None:
 
     import leafs
     from common.camera import CameraSettings, capture, save_last
+    from common.config import parse_retention
     from common.logger import EventLog
 
     settings = CameraSettings.load()
+    retention = parse_retention(Path(args.config).read_text())
 
-    with EventLog(args.log) as log:
+    with EventLog(args.log, max_lines=retention.log_max_lines) as log:
         log.note("v3 wake: capturing")
         try:
             image = capture(settings)

@@ -88,11 +88,9 @@ class Reading:
         raise KeyError(f"unknown field {field!r}")
 
 
-_TIMING_RE = re.compile(r"^(?P<key>[a-z_]+)\s*=\s*(?P<value>-?\d+(?:\.\d+)?)$")
+_SETTING_RE = re.compile(r"^(?P<key>[a-z_]+)\s*=\s*(?P<value>-?\d+(?:\.\d+)?)$")
 
-# Every interval configuration.txt may set, in seconds. Anything else is
-# rejected rather than ignored, so a typo is reported instead of silently
-# leaving the compiled default in place.
+# Every interval configuration.txt may set, in seconds.
 TIMING_KEYS = (
     "sample_interval",   # how often the ESP32 samples
     "image_interval",    # how often the Pi takes a picture (V1)
@@ -100,6 +98,16 @@ TIMING_KEYS = (
     "adaptive_fast",     # interval while the readings are moving (V2, V3)
     "adaptive_slow",     # interval after three quiet samples (V2, V3)
 )
+
+# How much history to keep. The log is append-only otherwise, and at one sample
+# a minute it grows by a few thousand lines a day.
+RETENTION_KEYS = (
+    "log_max_lines",     # trim events_log.txt to this many lines
+)
+
+# Anything outside this set is rejected rather than ignored, so a typo is
+# reported instead of silently leaving the compiled default in place.
+SETTING_KEYS = TIMING_KEYS + RETENTION_KEYS
 
 
 @dataclass(frozen=True)
@@ -113,32 +121,48 @@ class Timing:
     adaptive_slow: float | None = None
 
 
-def parse_timing(text: str) -> Timing:
-    """Read the `key = value` lines from configuration.txt.
+@dataclass(frozen=True)
+class Retention:
+    """How much history to keep. None means "keep everything"."""
 
-    Rule lines are ignored here; parse_config handles those. Both live in the
+    log_max_lines: int | None = None
+
+
+def _iter_settings(text: str):
+    """Yield (key, value) for every `key = value` line, validating the key.
+
+    Rule lines are skipped here; parse_config handles those. Both live in the
     same file because there is only one thing to edit when tuning the system.
     """
-    values: dict[str, float] = {}
-
     for lineno, raw in enumerate(text.splitlines(), start=1):
         line = raw.split("#", 1)[0].strip()
         if not line:
             continue
 
-        match = _TIMING_RE.match(line)
+        match = _SETTING_RE.match(line)
         if not match:
             continue   # a rule line
 
         key = match["key"]
-        if key not in TIMING_KEYS:
+        if key not in SETTING_KEYS:
             raise ValueError(
                 f"line {lineno}: unknown setting {key!r}, "
-                f"expected one of {', '.join(TIMING_KEYS)}"
+                f"expected one of {', '.join(SETTING_KEYS)}"
             )
-        values[key] = float(match["value"])
+        yield key, float(match["value"])
 
+
+def parse_timing(text: str) -> Timing:
+    """Read the interval settings from configuration.txt."""
+    values = {k: v for k, v in _iter_settings(text) if k in TIMING_KEYS}
     return Timing(**values)
+
+
+def parse_retention(text: str) -> Retention:
+    """Read the retention settings from configuration.txt."""
+    values = {k: v for k, v in _iter_settings(text) if k in RETENTION_KEYS}
+    lines = values.get("log_max_lines")
+    return Retention(log_max_lines=int(lines) if lines is not None else None)
 
 
 def parse_config(text: str) -> list[Rule]:
@@ -155,8 +179,8 @@ def parse_config(text: str) -> list[Rule]:
 
         match = _RULE_RE.match(line)
         if not match:
-            if _TIMING_RE.match(line):
-                continue   # a timing setting, handled by parse_timing
+            if _SETTING_RE.match(line):
+                continue   # a setting, handled by parse_timing/parse_retention
             raise ValueError(f"line {lineno}: cannot parse {raw!r}")
 
         field = match["field"]

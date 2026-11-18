@@ -222,6 +222,10 @@ Serves on port 8081: latest sensor values, the event log, and an editor for
 scanner analysed rather than a live stream, because only one process can hold
 the camera and the monitoring loop needs it.
 
+Recent events are listed newest first. How much history is kept is set by
+`log_max_lines` in `configuration.txt` (default 50000, `0` keeps everything);
+the file is trimmed when a run opens it and again whenever it doubles.
+
 ## Why systemd
 
 Nothing starts the supervisor on its own otherwise. The whole point of pressing

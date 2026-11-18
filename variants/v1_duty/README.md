@@ -52,6 +52,7 @@ Set the intervals in `config/configuration.txt`; no reflash needed.
 ```
 sample_interval = 60     # ESP32, pushed over UART2 at startup
 image_interval = 300     # Pi camera
+log_max_lines = 50000    # trim logs/events_log.txt to this many lines, 0 = keep all
 ```
 
 `--image-interval` overrides `image_interval` for a single run, which is handy

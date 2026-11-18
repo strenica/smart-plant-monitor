@@ -24,16 +24,45 @@ def stamp(when: float | None = None) -> str:
 
 
 class EventLog:
-    """Append-only event log. Flushes every line so it can be tailed live."""
+    """Append-only event log. Flushes every line so it can be tailed live.
 
-    def __init__(self, path: str | Path):
+    With `max_lines` set the file is trimmed to that many lines on open, and
+    again whenever it has doubled, so a long run cannot fill the card. Trimming
+    keeps the newest lines, because the interesting end of a log is the end.
+    """
+
+    def __init__(self, path: str | Path, max_lines: int | None = None):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.max_lines = max_lines
+        self._count = 0
+        if max_lines:
+            self._trim()
         self._fh = self.path.open("a", buffering=1)
+
+    def _trim(self) -> None:
+        """Keep only the newest max_lines lines."""
+        if not self.path.exists():
+            self._count = 0
+            return
+
+        lines = self.path.read_text(errors="replace").splitlines()
+        if len(lines) > self.max_lines:
+            lines = lines[-self.max_lines:]
+            self.path.write_text("\n".join(lines) + "\n")
+        self._count = len(lines)
 
     def _write(self, text: str) -> None:
         self._fh.write(text + "\n")
         self._fh.flush()
+        self._count += 1
+
+        if self.max_lines and self._count >= self.max_lines * 2:
+            # Trim in batches rather than on every line: rewriting the file is
+            # O(size), and doing it per write would dominate the cost.
+            self._fh.close()
+            self._trim()
+            self._fh = self.path.open("a", buffering=1)
 
     def measurement(self, field: str, value: float) -> None:
         """Log one sensor value. Integers print without a decimal point."""
