@@ -127,11 +127,17 @@ def capture_loop(state: LiveState, quality: int) -> None:
 PAGE = """<!doctype html>
 <html><head><meta charset="utf-8"><title>Pi camera preview</title>
 <style>
-  body { margin:0; background:#111; color:#ddd; font:14px system-ui,sans-serif }
-  header { padding:10px 14px; background:#1b1b1b; display:flex; gap:18px;
-           align-items:center; flex-wrap:wrap }
+  html, body { height:100%; margin:0; }
+  body { background:#111; color:#ddd; font:14px system-ui,sans-serif;
+         display:flex; flex-direction:column; }
+  header { flex:0 0 auto; padding:10px 14px; background:#1b1b1b;
+           display:flex; gap:18px; align-items:center; flex-wrap:wrap }
   header b { color:#fff; font-weight:600 }
-  img { display:block; width:100%; height:auto }
+  /* The image gets whatever vertical space the header leaves and is letterboxed
+     inside it, so it never overflows the window whatever the aspect ratio. */
+  main { flex:1 1 auto; min-height:0; display:flex; align-items:center;
+         justify-content:center; background:#000 }
+  img { max-width:100%; max-height:100%; object-fit:contain; display:block }
   button, select { background:#2a2a2a; color:#ddd; border:1px solid #444;
                    border-radius:5px; padding:5px 10px; font:inherit; cursor:pointer }
   button:hover, select:hover { background:#333 }
@@ -163,7 +169,7 @@ PAGE = """<!doctype html>
   <button id="save">Save and apply</button>
   <span id="status"></span>
 </header>
-<img id="stream" src="/stream" alt="camera stream">
+<main><img id="stream" src="/stream" alt="camera stream"></main>
 
 <script>
 const SIZES = __SIZES__;
