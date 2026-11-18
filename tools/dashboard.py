@@ -22,7 +22,7 @@ import html
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 
 def _find_pi_root() -> Path | None:
@@ -127,19 +127,23 @@ def make_handler(log_path: Path, config_path: Path, capture_path: Path):
             self.wfile.write(body)
 
         def do_GET(self) -> None:
-            if self.path == "/":
+            # Match on the path alone. The status page appends a cache-busting
+            # query string to the image URL, and comparing self.path directly
+            # would 404 on it.
+            path = urlparse(self.path).path
+            if path == "/":
                 self._status()
-            elif self.path == "/log":
+            elif path == "/log":
                 self._log()
-            elif self.path == "/config":
+            elif path == "/config":
                 self._config()
-            elif self.path == "/capture.jpg":
+            elif path == "/capture.jpg":
                 self._capture()
             else:
                 self.send_error(404)
 
         def do_POST(self) -> None:
-            if self.path != "/config":
+            if urlparse(self.path).path != "/config":
                 self.send_error(404)
                 return
 
