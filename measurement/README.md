@@ -1,44 +1,51 @@
 # Measurement
 
-The energy evaluation. Everything here is run on the laptop, with the Monsoon
-HVPM feeding the Pi and the ESP32 taking its power from the Pi's 5 V rail — the
-system as it actually runs, measured as one load.
+The energy evaluation. Run on the laptop, with the Monsoon HVPM feeding the Pi
+and the ESP32 taking its power from the Pi's 5 V rail — the system as it
+actually runs, measured as one load.
 
-The Monsoon resets every minute, so a capture is 60 s. Longer behaviour is
-covered by repeating the capture, not by making it longer.
+The Monsoon resets every minute, so **a capture is 60 s**. The configs in
+`configs/` compress each variant's timescale so that one capture contains three
+of whatever it does. That is a compromise, and the arithmetic to undo it is
+below.
 
 ## What this produces
 
 | Run | Captures | Each | Total | Answers |
 |---|---|---|---|---|
 | `v0_baseline` | 3 | 60 s | 3 min | the baseline |
-| `v1_duty` | 5 | 60 s | 5 min | fixed duty cycle |
-| `v2_adaptive` | 5 | 60 s | 5 min | adaptive sampling, Pi still on |
-| `v3_deepsleep` | 10 | 60 s | 10 min | the headline: Pi halted, ESP32 sleeping |
+| `v1_duty` | 3 | 60 s | 3 min | fixed duty cycle |
+| `v2_adaptive` | 3 | 60 s | 3 min | adaptive sampling, Pi still on |
+| `v3_deepsleep` | 3 | 60 s | 3 min | the headline: Pi halted, ESP32 sleeping |
 | `v3_event` | 3 | 60 s | 3 min | what one wake costs |
 
-26 minutes of capture. With flashing and settling, about an hour.
+15 minutes of capture. With flashing and settling, about an hour.
 
-## Before you start
+## The compression, and what it costs
 
-**1. Null test.** With nothing connected, current should read essentially zero.
+| Variant | Deployed | Measured | Factor |
+|---|---|---|---|
+| V0 | 2 s sampling | 2 s | none |
+| V1 | camera every 300 s | camera every 20 s | 15× |
+| V2 | slow interval 600 s | slow interval 60 s | 10× |
+| V3 | sample every 60 s | sample every 20 s | 3× |
 
-```bash
-hvpm capture -o /tmp/null.csv --duration 10 --voltage 5
+At the deployed intervals a 60 s window would contain one event or none, and
+the mean would be dominated by whether it landed inside the window. Compressing
+puts three events in every capture, so the mean is stable.
+
+**The measured energy per hour is therefore higher than the deployed figure.**
+It is the idle cost plus three events. To get the deployed figure, take the
+event part out, divide it by the factor, and put it back:
+
+```
+E/hour(deployed) = idle + (E/hour(measured) - idle) / factor
 ```
 
-If it reads tens of milliamps, the calibration is wrong and every number after
-this is garbage. Do not skip it.
-
-**2. Check the current limit** against the Pi 4's ~3 A peak. A brownout
-mid-capture wastes a run.
-
-**3. Fix the Pi's clock.** It has no RTC and boots to the time saved at
-shutdown, so `events_log.txt` is mis-timestamped until NTP catches up.
-
-```bash
-ssh admin@<pi> date
-```
+`idle` is the same variant with nothing happening — for V1 that is the camera
+off, for V3 it is no rule firing. If you do not have an idle run, the
+`v3_deepsleep` capture is a good proxy for V3, and V0 is a proxy for V1's
+non-camera cost.
 
 ## Procedure, once per variant
 
@@ -63,10 +70,6 @@ git pull
 cp measurement/configs/v0_baseline.txt config/configuration.txt
 ```
 
-These configs carry the same timing values as the variant's compiled defaults,
-written out rather than commented so a stale value cannot survive in the ESP32's
-RTC memory. Their rules never fire, which isolates the cost of monitoring.
-
 **3. Flash the variant.** This also resets the ESP32, clearing its RTC.
 
 ```bash
@@ -88,22 +91,24 @@ warm-up.
 ./measurement/capture.sh v0_baseline 3
 ```
 
-**6. Repeat** for `v1_duty` (5), `v2_adaptive` (5), `v3_deepsleep` (10).
+**6. Repeat** for `v1_duty`, `v2_adaptive`, `v3_deepsleep`, `v3_event`.
 
 ## The event run
 
 `v3_event` is the same firmware and wiring as `v3_deepsleep`. The only
-difference is a rule that fires on the first sample, so the Pi wakes exactly
-once per capture.
+difference is a rule that fires on the first sample, so the Pi wakes once per
+capture. The 30-minute cooldown means it cannot fire twice, so three captures
+give three events.
+
+**Reflash rather than pressing EN.** The flash bakes the firing rule into the
+firmware, so it is deterministic. Copying the config alone leaves the quiet
+rules in the ESP32's RTC, nothing fires, the Pi never wakes, and the new rules
+never get pushed — a deadlock.
 
 ```bash
 cp measurement/configs/v3_event.txt config/configuration.txt
-./measurement/capture.sh v3_event 3
+./install.sh v3_deepsleep --local
 ```
-
-The difference between `v3_deepsleep` and `v3_event` is the cost of one wake:
-pulse, boot, camera, vision, halt. That is the number that makes V3's design
-argument concrete, and it is the one nobody else will have.
 
 ## After
 
@@ -113,16 +118,6 @@ python3 measurement/summarise.py
 
 Prints mean current, run-to-run spread, average power and Wh/day per variant.
 
-## Two traps
-
-**V1's camera fires once per 5 minutes.** A single 60 s capture either contains
-that spike or does not, and the spike roughly doubles the mean. That is why V1
-gets 5 consecutive captures covering a full 5-minute period, averaged. One
-capture of V1 is meaningless.
-
-**V3 wakes every 60 s.** A 60 s window catches exactly one wake, and whether it
-lands at the start or the end swings the mean. Ten captures average that out.
-
 ## What the numbers cannot say
 
 You measured the system, not the parts, so you cannot state "the Pi is 97% of
@@ -131,3 +126,20 @@ the energy" as a measurement. You can state it as an inference from
 
 If you want it measured, one extra run: unplug VIN from pin 4 and repeat
 `v2_adaptive`. The difference is the ESP32's share. Two minutes and one cable.
+
+## Before you start
+
+**Null test.** With nothing connected, current should read essentially zero.
+
+```bash
+hvpm capture -o /tmp/null.csv --duration 10 --voltage 5
+```
+
+If it reads tens of milliamps, the calibration is wrong and every number after
+this is garbage. Do not skip it.
+
+**Check the current limit** against the Pi 4's ~3 A peak. A brownout
+mid-capture wastes a run.
+
+**Fix the Pi's clock.** It has no RTC and boots to the time saved at shutdown,
+so `events_log.txt` is mis-timestamped until NTP catches up.
