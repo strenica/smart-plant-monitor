@@ -7,8 +7,9 @@ again. Between events the Pi draws nothing at all.
 
 Readings taken while the Pi was off are not lost: the ESP32 keeps them in RTC
 memory and hands them over as soon as the Pi asks, which is the first thing this
-script does. The ESP32 stays awake for that handover and then goes back to
-sleep.
+script does. The same session pushes the rules from configuration.txt the other
+way, so changing a rule does not need a reflash. The ESP32 stays awake for that
+handover and then goes back to sleep.
 
     python3 v3_wake.py
     python3 v3_wake.py --no-halt      # leave the Pi running, for testing
@@ -28,12 +29,19 @@ import serial
 sys.path.insert(0, str(Path(__file__).resolve().parent / "vision"))
 
 
-def collect_backlog(port: str, baud: int, log, timeout: float = 5.0) -> int:
-    """Ask the ESP32 for the readings it took while the Pi was off.
+def handover(port: str, baud: int, log, config_path: Path,
+             timeout: float = 5.0) -> int:
+    """Do everything that needs the ESP32 awake, in one session.
 
     The ESP32 only answers while it is awake, which is the window right after it
-    wakes us. If it has already gone back to sleep there is no reply and nothing
-    to log, and that is not an error: the readings stay buffered for next time.
+    wakes us. Two jobs: collect the readings it buffered while we were off, and
+    hand it the rules from configuration.txt so a rule change needs no reflash.
+    It goes back to sleep when we say "bye", so both have to happen before that.
+
+    If it has already gone back to sleep there is no reply and nothing to log,
+    and that is not an error: the readings stay buffered for next time.
+
+    Returns how many readings were collected.
     """
     from common.config import parse_reading
 
@@ -56,6 +64,9 @@ def collect_backlog(port: str, baud: int, log, timeout: float = 5.0) -> int:
                 reading = parse_reading(line)
                 if reading is not None:
                     readings.append(reading)
+
+        push_rules(ser, log, config_path)
+
         # Let the ESP32 stop waiting and go back to sleep now rather than at the
         # end of its handover timeout.
         ser.write(b"bye\n")
@@ -76,6 +87,47 @@ def collect_backlog(port: str, baud: int, log, timeout: float = 5.0) -> int:
             log.measurement("air_temperature", reading.air_temp)
         log.measurement("soil_humidity", reading.soil)
     return len(readings)
+
+
+def push_rules(ser, log, config_path: Path) -> None:
+    """Hand the ESP32 the current rule set, and record what it ended up with.
+
+    The whole set goes every time, starting with "rule clear", so a rule deleted
+    from configuration.txt actually disappears on the ESP32 too.
+    """
+    from common.config import parse_config
+
+    try:
+        rules = parse_config(config_path.read_text())
+    except (OSError, ValueError) as exc:
+        log.note(f"v3 wake: cannot read rules: {exc}")
+        return
+
+    commands = ["rule clear"]
+    commands += [
+        f"rule {rule.number} {rule.field} {rule.op} {rule.threshold:g}"
+        for rule in rules
+    ]
+    commands.append("rule save")
+
+    for command in commands:
+        ser.write(command.encode() + b"\n")
+        time.sleep(0.05)
+
+    # The ESP32 answers every line. Read them back so the log records what it
+    # actually holds rather than what we hoped it took.
+    confirmed = None
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline:
+        line = ser.readline().decode(errors="replace").strip()
+        if not line:
+            break
+        if line.startswith("rules saved"):
+            confirmed = line
+
+    log.note(
+        f"v3 wake: pushed {len(rules)} rules, esp32 says {confirmed or 'nothing'}"
+    )
 
 
 def main() -> None:
@@ -99,9 +151,10 @@ def main() -> None:
 
     with EventLog(args.log, max_lines=retention.log_max_lines) as log:
         # First, before anything that can fail: the ESP32 is holding the backlog
-        # for us and will not wait forever.
+        # for us and will not wait forever. The rules go the other way in the
+        # same session, because it sleeps as soon as we say "bye".
         log.note("v3 wake: collecting buffered readings")
-        collect_backlog(args.port, args.baud, log)
+        handover(args.port, args.baud, log, Path(args.config))
 
         log.note("v3 wake: capturing")
         try:

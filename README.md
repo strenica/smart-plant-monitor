@@ -157,6 +157,16 @@ after the ESP32 pulses the Pi's wake line. The ESP32 stays awake for that window
 readings, so the usual wait is a second or two. If the Pi never shows up the
 ESP32 sleeps anyway and keeps the buffer for next time.
 
+The same session carries the rules the other way. The Pi sends `rule clear`, one
+line per rule, then `rule save`, and the ESP32 keeps the set in RTC memory. That
+is why changing a rule needs no reflash: it reaches the ESP32 at the next wake
+even if you never press EN. The log records what the ESP32 says it ended up
+with, so a push that did not land is visible rather than assumed:
+
+```
+Thu Nov 19 12:36:45 CET 2026: v3 wake: pushed 3 rules, esp32 says rules saved 3
+```
+
 The log lines carry the Pi's clock, because that is when the Pi learned about
 them. The ESP32's own sample times are recorded in the summary line above them:
 
@@ -190,9 +200,10 @@ the next boot goes straight to monitoring. A power cycle clears it too.
 In V3 the Pi is halted, so the ESP32 wakes it on a cold boot and then stays
 awake until the Pi says `mode run`. Without that it would deep sleep before the
 Pi finished booting, the flag would never clear, and every later boot would land
-in the preview again. Setup mode is also the only moment the two nodes are awake
-together, so it is when the supervisor hands the ESP32 the intervals from
-`configuration.txt`.
+in the preview again. Setup mode is one of the two moments the two nodes are
+awake together, so it is when the supervisor hands the ESP32 the intervals and
+the rules from `configuration.txt`. The other is the handover window after a
+rule fires, described under [Logging](#logging).
 
 ## Dashboard
 
@@ -234,11 +245,16 @@ it stays violated. Clearing a condition is silent.
 
 **Where the rules are read depends on the variant.** V0 and V1 evaluate them on
 the Pi and read this file at runtime. V2 and V3 evaluate them on the ESP32,
-which cannot read the Pi's disk while the Pi is powered off, so `install.sh`
-bakes these lines into the firmware. Changing a rule for V2 or V3 therefore
-needs `./install.sh <variant>`, not just a service restart. Pushing them over
-UART instead was tried and does not work: the ESP32 is asleep almost all the
-time in V3, and the push is best-effort with no retry.
+which cannot read the Pi's disk while the Pi is powered off, so the Pi pushes
+them over UART2 whenever the ESP32 is awake and the ESP32 keeps them in RTC
+memory. Press EN to apply a change immediately; in V3 a change also reaches the
+ESP32 at its next wake, because the Pi pushes the rules in the same session it
+uses to collect the buffered readings. No reflash either way.
+
+`install.sh` still bakes the current lines into the firmware as a fallback, so a
+board that has never been pushed to, which means a power cycle, starts from
+them. The push replaces the whole set every time, starting with `rule clear`, so
+a rule deleted from this file actually disappears on the ESP32 too.
 
 The `key = value` lines set the intervals, in seconds. They are optional: a
 missing key falls back to the variant's compiled default, so a file with only
@@ -247,9 +263,8 @@ a typo that quietly leaves the old interval in place is worse than a crash.
 
 `sample_interval` and the adaptive bounds are pushed to the ESP32 over UART2
 when the Pi starts, but only while the ESP32 is awake — in V3 that means setup
-mode, so in normal operation the compiled-in values apply. `adaptive_fast` and
-`adaptive_slow` are only used by V2 and V3, `image_interval` only by V1, and
-`heartbeat` only by V2.
+mode, or the next wake. `adaptive_fast` and `adaptive_slow` are only used by V2
+and V3, `image_interval` only by V1, and `heartbeat` only by V2.
 
 `log_max_lines` caps `logs/events_log.txt`. The file is trimmed to the newest
 N lines when a run opens it, and again whenever it grows to twice that, so it

@@ -151,6 +151,38 @@ static void handle_command(const char *cmd)
     }
 #endif
 
+#if RULES_ON_ESP32
+    // The Pi sends the whole set every time: clear, one line per rule, then
+    // save. Replacing rather than patching means a rule deleted from
+    // configuration.txt actually disappears here too.
+    if (strncmp(cmd, "rule clear", 10) == 0) {
+        rules_clear();
+        pi_link_send("rules ok");
+        return;
+    }
+    if (strncmp(cmd, "rule save", 9) == 0) {
+        rules_commit();
+        char reply[32];
+        snprintf(reply, sizeof(reply), "rules saved %d", rules_count());
+        pi_link_send(reply);
+        ESP_LOGI(TAG, "rule set replaced by the Pi: %d rules", rules_count());
+        return;
+    }
+    {
+        int   number = 0;
+        char  field[32] = {0};
+        char  op[3] = {0};
+        float threshold = 0.0f;
+
+        if (sscanf(cmd, "rule %d %31[a-z_] %2s %f",
+                   &number, field, op, &threshold) == 4) {
+            pi_link_send(rules_add(number, field, op, threshold)
+                         ? "rules ok" : "rules bad");
+            return;
+        }
+    }
+#endif
+
     if (sscanf(cmd, "buzz %d", &n) == 1 && n > 0 && n <= 5) {
         buzzer_beep(n);
     } else if (strncmp(cmd, "mode?", 5) == 0) {
@@ -207,7 +239,14 @@ void app_main(void)
     pi_link_init();
 
 #if RULES_ON_ESP32
-    ESP_LOGI(TAG, "rules on the ESP32: %d", rules_load(RULES_TEXT));
+    // The Pi can replace the rule set over UART and RTC memory keeps it across
+    // deep sleep, so the text baked in at install time is only the fallback for
+    // a board that has never been pushed to, which means a power cycle.
+    if (rules_pushed()) {
+        ESP_LOGI(TAG, "rules from the Pi: %d", rules_count());
+    } else {
+        ESP_LOGI(TAG, "rules from firmware: %d", rules_load(RULES_TEXT));
+    }
 #endif
 
     if (cold_boot) {

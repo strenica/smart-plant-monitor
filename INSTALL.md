@@ -253,6 +253,14 @@ expected if you booted the Pi by hand, because nothing woke it. It is not
 expected after a rule fires, and points at `PI_HANDOVER_MS` being shorter than
 the Pi's boot time.
 
+The same session pushes the rules the other way, so editing `configuration.txt`
+on the dashboard needs no reflash. Press EN to apply a change immediately, or
+wait for the next wake. The log records what the ESP32 says it holds:
+
+```
+Thu Nov 19 12:36:45 CET 2026: v3 wake: pushed 3 rules, esp32 says rules saved 3
+```
+
 ## Setup mode: press EN to reframe
 
 Pressing EN on the ESP32 cold-boots it, and it remembers that. Two paths lead

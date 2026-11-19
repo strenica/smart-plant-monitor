@@ -66,10 +66,10 @@ def preview_running() -> bool:
 def running_variant() -> str | None:
     """Which variant the monitor unit is running, or None if it cannot be read.
 
-    The rules in configuration.txt are read at runtime by V0 and V1, but baked
-    into the firmware for V2 and V3, so a saved file only changes the rules for
-    the first two. The dashboard has to know which it is in order to say so
-    instead of claiming a save that will not take effect.
+    The rules in configuration.txt are read at runtime by V0 and V1, but pushed
+    to the ESP32 over UART for V2 and V3, which only works while it is awake.
+    The dashboard has to know which it is in order to say something true about
+    when a saved file takes effect.
     """
     try:
         result = subprocess.run(
@@ -288,12 +288,12 @@ def make_handler(log_path: Path, config_path: Path, capture_path: Path,
             variant = running_variant()
             if variant in ("v2_adaptive", "v3_deepsleep"):
                 # These evaluate rules on the ESP32, which cannot read the Pi's
-                # disk while the Pi is off, so install.sh bakes the rules into
-                # the firmware. The restart still applies the timing and the
-                # retention, but the rules will not change.
+                # disk while the Pi is off. The rules reach it over UART2
+                # instead, but only while it is awake: in V3 that means setup
+                # mode, or the next time it wakes the Pi.
                 note = (
-                    f"rules are built into {variant}, so they need "
-                    f"./install.sh {variant} to take effect"
+                    f"rules reach {variant} over UART when the ESP32 is awake; "
+                    f"press EN to apply them now"
                 )
             elif restart:
                 note = "monitor restarting"

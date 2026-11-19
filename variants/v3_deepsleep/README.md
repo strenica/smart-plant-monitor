@@ -59,6 +59,23 @@ after the ESP32 pulses the Pi. The ESP32 stays awake for that window, capped at
 `PI_HANDOVER_MS` (120 s), and the Pi's `bye` ends it early — the real wait is
 the Pi's boot time, not the ceiling.
 
+The same session carries the rules the other way, so changing a rule needs no
+reflash:
+
+```
+Pi  → rule clear
+      rule 1 air_humidity > 50
+      rule 2 air_temperature < 15
+      rule 3 soil_humidity < 300
+      rule save
+ESP → rules ok ... rules saved 3
+```
+
+The ESP32 keeps the set in RTC memory, so it survives deep sleep. A power cycle
+clears it and the firmware falls back to the text `install.sh` baked in. The
+supervisor pushes the same set in setup mode, which is the faster path when you
+are already pressing EN to reframe.
+
 The log lines carry the Pi's clock, because that is when the Pi learned about
 them. The ESP32's own sample times go in the summary line above them:
 

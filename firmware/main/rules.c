@@ -33,8 +33,12 @@ struct rule {
     float threshold;
 };
 
-static struct rule s_rules[RULES_MAX];
-static int s_count;
+// The rule set itself lives in RTC memory so the Pi can replace it over UART
+// and the replacement survives deep sleep. A power cycle clears it, and the
+// firmware text baked in by install.sh takes over again.
+static RTC_DATA_ATTR struct rule s_rules[RULES_MAX];
+static RTC_DATA_ATTR int  s_count;
+static RTC_DATA_ATTR bool s_from_pi;
 
 // These survive deep sleep, so a rule that is already violated does not
 // re-alert on every wake.
@@ -61,6 +65,7 @@ static int op_from_name(const char *name)
 int rules_load(const char *text)
 {
     s_count = 0;
+    s_from_pi = false;
     const char *p = text;
 
     while (*p && s_count < RULES_MAX) {
@@ -109,6 +114,59 @@ int rules_load(const char *text)
         p = eol + 1;
     }
 
+    return s_count;
+}
+
+// Staging area for a push from the Pi. The live set is only replaced when the
+// Pi says "rule save", so a push that dies halfway leaves the old rules in
+// place rather than an empty set that silently never buzzes.
+static struct rule s_staging[RULES_MAX];
+static int s_staging_count;
+
+void rules_clear(void)
+{
+    s_staging_count = 0;
+}
+
+bool rules_add(int number, const char *field, const char *op, float threshold)
+{
+    if (s_staging_count >= RULES_MAX) {
+        return false;
+    }
+
+    int f = field_from_name(field);
+    int o = op_from_name(op);
+    if (f == FIELD_UNKNOWN || o == OP_UNKNOWN) {
+        return false;
+    }
+
+    s_staging[s_staging_count].number    = number;
+    s_staging[s_staging_count].field     = f;
+    s_staging[s_staging_count].op        = o;
+    s_staging[s_staging_count].threshold = threshold;
+    s_staging_count++;
+    return true;
+}
+
+void rules_commit(void)
+{
+    memcpy(s_rules, s_staging, sizeof(struct rule) * s_staging_count);
+    s_count = s_staging_count;
+    s_from_pi = true;
+
+    // The new set has nothing to do with the old one, so the violation state
+    // has to go with it.
+    memset(s_violated, 0, sizeof(s_violated));
+    memset(s_last_alert_ms, 0, sizeof(s_last_alert_ms));
+}
+
+bool rules_pushed(void)
+{
+    return s_from_pi;
+}
+
+int rules_count(void)
+{
     return s_count;
 }
 

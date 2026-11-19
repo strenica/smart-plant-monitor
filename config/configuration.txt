@@ -8,8 +8,13 @@
 #
 # V0 and V1 read this file at runtime, on the Pi. V2 and V3 evaluate the rules
 # on the ESP32, which cannot read the Pi's disk while the Pi is powered off, so
-# install.sh bakes these lines into the firmware. Changing a rule for V2 or V3
-# therefore needs ./install.sh <variant>, not just a service restart.
+# the Pi pushes these lines over UART2 whenever the ESP32 is awake and the
+# ESP32 keeps them in RTC memory. Press EN to apply a change immediately; in V3
+# a change also reaches the ESP32 at its next wake. No reflash needed.
+#
+# install.sh still bakes the current lines into the firmware as a fallback, so
+# a board that has never been pushed to, which means a power cycle, starts from
+# them.
 #
 # These thresholds are placeholders. Calibrate them for your species and your
 # probe: run tools/live.py --csv, note the raw adc in dry soil and again in a
@@ -32,9 +37,8 @@
 #   log_max_lines     trim events_log.txt to this many lines (0 = keep all)
 #
 # The Pi pushes sample_interval and the adaptive bounds over UART2, but only
-# while the ESP32 is awake. In V3 that means setup mode, so in normal operation
-# the values compiled into the variant apply. Treat this section as
-# authoritative for V0-V2 and as a starting point for V3.
+# while the ESP32 is awake. In V3 that means setup mode, or the next time it
+# wakes the Pi. Until then the values compiled into the variant apply.
 # ---------------------------------------------------------------------------
 
 sample_interval = 60
