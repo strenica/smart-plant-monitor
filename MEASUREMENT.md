@@ -58,7 +58,15 @@ time, the **bold** ones are the core comparison and the rest are extras.
 
 ### ESP32 alone — `--voltage 3.3`
 
-Disconnect the ESP32 from the Pi first. It must be powered only by the HVPM.
+Disconnect the ESP32 from the Pi first: unplug VIN from pin 4 **and** the USB
+cable. It must be powered only by the HVPM.
+
+**The CP2102 USB bridge never sleeps.** It draws about 10 mA whenever it has
+5 V, which is roughly a hundred times the ESP32's deep-sleep current. Powered
+through VIN with the USB cable out, the bridge is unpowered and E4 measures the
+chip. Leave USB connected and E4 measures the bridge instead. Check which one
+you did before writing the number down — this is the single easiest way to make
+V3 look like it saved nothing.
 
 | # | Run | Duration | What it tells you |
 |---|---|---|---|
@@ -74,7 +82,8 @@ transient. Three minutes gives you three cycles.
 
 ### Pi alone — `--voltage 5`
 
-The Pi must be powered only by the HVPM. Nothing else on its USB ports.
+The Pi must be powered only by the HVPM. Nothing else on its USB ports, and
+nothing on the 5 V rail either — unplug the ESP32's VIN from pin 4.
 
 | # | Run | Duration | What it tells you |
 |---|---|---|---|
@@ -96,7 +105,7 @@ P7 minus P2 is the camera's share. No extra hardware needed.
 
 | # | Run | Duration | What it tells you |
 |---|---|---|---|
-| S1 | Pi with the ESP32 on its USB | 120 s | Cross-check: should be close to P4 + E3 |
+| S1 | Pi with the ESP32 on its 5 V rail (pin 4) | 120 s | Cross-check: should be close to P4 + E3 |
 
 If S1 does not roughly equal the sum of its parts, something in your per-component
 methodology is wrong and you need to know that before you present it.
@@ -148,9 +157,10 @@ Pick a condition set and write it down once, then follow it for all four.
 `--runtime-limit` above that or the Pi browns out mid-capture and you get a
 truncated run that looks like a crash. Check the HVPM's own rating first.
 
-**USB passthrough.** For S1 the ESP32 is on the Pi's USB, so the Pi needs USB
-data through the monitor: `--usb-passthrough on`. It adds noise, so do not use
-it for the runs that do not need it.
+**USB passthrough.** The ESP32 is on the Pi's 5 V rail, not its USB port, so S1
+does not need USB data through the monitor for it. Unplug the ESP32's USB cable
+for S1 anyway: with both VIN and USB connected there are two power paths and the
+split between them is not something you can see from the meter.
 
 **Dropped samples.** The summary reports them. Non-zero means the capture is
 unreliable — usually USB contention or the laptop sleeping. Re-run it.
@@ -164,9 +174,9 @@ is the easiest way to get caught out in questions.
 power draw mid-capture. Keep runs short and the Pi cool, and note if the fan
 spun up.
 
-**The ESP32 must be disconnected from the Pi** for the ESP32 runs. If it is
-still on the Pi's USB it is being powered by the Pi, and you are measuring the
-Pi.
+**The ESP32 must be disconnected from the Pi** for the ESP32 runs. That means
+both wires: VIN off pin 4 and the USB cable out. Either one left connected and
+the Pi is powering it, so you are measuring the Pi.
 
 **Do not let the laptop sleep** during a capture. It drops the USB device.
 

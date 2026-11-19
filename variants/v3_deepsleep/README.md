@@ -28,27 +28,69 @@ The Pi side is not a daemon: it runs once per wake and halts.
 
 ```bash
 ssh admin@10.42.0.15
-cd ~/plant && .venv/bin/python variants/v3_wake.py
+cd ~/plant && .venv/bin/python variants/v3_deepsleep/run.py
 ```
 
 Use `--no-halt` while testing, or the Pi shuts down under you.
 
+## Logging
+
+The Pi is off when the ESP32 takes a reading, so there is nobody to send it to.
+Rather than drop it, the ESP32 keeps the last 96 readings in a ring buffer in
+RTC memory — 1.6 h at the 60 s fast interval, 16 h at the 10 min slow one — and
+replays them when the Pi next wakes.
+
+The Pi asks first thing, before it touches the camera:
+
+```
+Pi  → log?
+ESP → log t=60000 soil=1000 adc=2651 air_t=19.8 air_h=49
+      log t=120000 soil=1000 adc=2650 air=ERR
+      log end
+Pi  → bye
+```
+
+The `log ` prefix is the only difference from a live reading, so the Pi parses
+both with the same `parse_reading`. The ESP32 clears the buffer once it has
+replayed it, so nothing is logged twice, and keeps it if the Pi never asks.
+
+The handover needs both boards awake at once, which only happens in the window
+after the ESP32 pulses the Pi. The ESP32 stays awake for that window, capped at
+`PI_HANDOVER_MS` (120 s), and the Pi's `bye` ends it early — the real wait is
+the Pi's boot time, not the ceiling.
+
+The log lines carry the Pi's clock, because that is when the Pi learned about
+them. The ESP32's own sample times go in the summary line above them:
+
+```
+Thu Nov 19 12:36:45 CET 2026: v3 wake: 12 buffered readings, esp32 t=3600000..4260000 ms
+```
+
 ## Wiring this depends on
 
 - ESP32 D25 (GPIO 25) → Pi physical pin 5, open-drain, 250 ms low pulse
-- `POWER_OFF_ON_HALT=0` in `/boot/firmware/config.txt`, so the 5 V rail stays up
-  while the Pi is halted and the ESP32 keeps running
+- ESP32 VIN → Pi physical pin 4 (5 V rail), **not** the Pi's USB port. The USB
+  port loses power when the Pi halts, which cold-boots the ESP32, which reads a
+  cold boot as setup mode, which pulses the Pi awake again. That loop is why V3
+  saved nothing until the power was moved to the rail.
+- `POWER_OFF_ON_HALT=0` and `WAKE_ON_GPIO=1` in the **EEPROM**
+  (`sudo rpi-eeprom-config --edit`), not `config.txt`. The first keeps the 5 V
+  rail up while the Pi is halted, which is what keeps the ESP32 running.
 - I2C must stay off: GPIO3 is both I2C1 SCL and the wake input
 
 ## Rule state across deep sleep
 
-Deep sleep restarts the CPU, so `app_main` runs again on every wake. Two things
-are kept in RTC memory to make that invisible:
+Deep sleep restarts the CPU, so `app_main` runs again on every wake. What is
+kept in RTC memory to make that invisible:
 
 - `s_violated[]` and `s_last_alert_ms[]` in `rules.c`, so a rule that is already
   violated does not re-alert on every wake
 - `s_clock_ms` in `main.c`, a monotonic clock that survives sleep, because the
   CPU's own uptime restarts
+- `s_interval_ms`, `s_fast_ms` and `s_slow_ms`, the intervals the Pi last sent
+- `s_setup_mode`, so the Pi can ask whether the last boot was a cold one
+- the 96-entry reading buffer in `sample_log.c`, which is what the Pi collects
+  on wake
 
 The bring-up diagnostics (soil probe scan, three beeps) are skipped on a
 deep-sleep wake. Three beeps a minute would be absurd and would wreck the

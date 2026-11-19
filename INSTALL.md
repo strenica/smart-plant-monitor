@@ -14,7 +14,7 @@ machine that is already set up, skip to [Install a variant](#install-a-variant).
 | Grove Buzzer | passive piezo, driven at its 2300 Hz resonance |
 | Raspberry Pi Camera Module 3 | Sony IMX708 |
 | microSD card | 16 GB or more |
-| 5 V supply for the Pi | the ESP32 is powered from the Pi's USB |
+| 5 V supply for the Pi | the ESP32 is powered from the Pi's 5 V rail, not its USB port |
 
 ## Wiring
 
@@ -24,7 +24,16 @@ machine that is already set up, skip to [Install a variant](#install-a-variant).
 | GND | pin 6 | common ground |
 | TX2 (GPIO17) | pin 10 (RXD) | ESP32 → Pi |
 | RX2 (GPIO16) | pin 8 (TXD) | Pi → ESP32 |
-| USB | USB | power, and the UART0 console |
+| VIN | pin 4 (5 V) | power, so the ESP32 survives the Pi halting |
+| USB | USB | the UART0 console only |
+
+The ESP32 must **not** be powered from the Pi's USB port. That port is behind a
+switch that opens when the Pi halts, so the ESP32 loses power, cold-boots, sees
+a cold boot as "setup mode", and pulses the Pi awake again. The result is a boot
+loop in which V3 never stays off and saves nothing. VIN on pin 4 is fed from the
+5 V rail, which stays up while the Pi is halted as long as `POWER_OFF_ON_HALT=0`
+is set (see below). Keep the USB cable plugged in for the console if you like;
+it is no longer carrying the power.
 
 Sensors:
 
@@ -34,8 +43,9 @@ Sensors:
 | SEN0114 analog out | GPIO 34 (ADC1_CH6) |
 | Grove buzzer | GPIO 27 |
 
-Never touch Pi pins 2 and 4 — they are 5 V. The SEN0114 must be powered from
-3.3 V, not 5 V: its output can reach 4.2 V and damage the ADC.
+Pi pins 2 and 4 are 5 V. Pin 4 is the one the ESP32's VIN sits on; never put
+3.3 V logic on either. The SEN0114 must be powered from 3.3 V, not 5 V: its
+output can reach 4.2 V and damage the ADC.
 
 ## Raspberry Pi setup
 
@@ -207,6 +217,41 @@ To run a variant directly, without the supervisor:
 ```bash
 .venv/bin/python variants/v1_duty/run.py
 ```
+
+## Logging
+
+Every variant writes `logs/events_log.txt` in the format the spec asks for:
+
+```
+Mon Oct 21 14:04:30 CEST 2024: air_humidity = 48
+Mon Oct 21 14:04:30 CEST 2024: air_temperature = 13
+Mon Oct 21 14:04:30 CEST 2024: soil_humidity = 1000
+```
+
+V0, V1 and V2 stream each reading to the Pi as it is taken, so the log fills
+live. V3 cannot: the Pi is powered off when the reading happens. The ESP32 keeps
+the last 96 readings in RTC memory instead and the Pi pulls them with `log?` as
+soon as it wakes. The [README](README.md#logging) explains the handover.
+
+To watch it on a running system:
+
+```bash
+tail -f ~/plant/logs/events_log.txt
+```
+
+After a rule fires you should see a summary line followed by the measurements:
+
+```
+Thu Nov 19 12:36:45 CET 2026: v3 wake: 12 buffered readings, esp32 t=3600000..4260000 ms
+Thu Nov 19 12:36:45 CET 2026: air_humidity = 49
+Thu Nov 19 12:36:45 CET 2026: air_temperature = 19.8
+Thu Nov 19 12:36:45 CET 2026: soil_humidity = 1000
+```
+
+No summary line means the ESP32 was already asleep when the Pi asked. That is
+expected if you booted the Pi by hand, because nothing woke it. It is not
+expected after a rule fires, and points at `PI_HANDOVER_MS` being shorter than
+the Pi's boot time.
 
 ## Setup mode: press EN to reframe
 

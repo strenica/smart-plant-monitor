@@ -175,9 +175,15 @@ hides.
   Needs NTP on wake, or the Pi to set it when it comes up.
 
 **ESP32 power is solved by the Pi's halt behaviour.** `POWER_OFF_ON_HALT=0` on this
-Pi means the 5 V rail stays up when it halts, so the ESP32 keeps its USB power and
-can wake the Pi back up. No independent supply needed. This only holds because we
+Pi means the 5 V rail stays up when it halts, so the ESP32 keeps running and can
+wake the Pi back up. No independent supply needed. This only holds because we
 halt rather than cut power — a real 5 V switch would reintroduce the problem.
+
+Note that the ESP32 has to be fed from the 5 V rail (pin 4), not the Pi's USB
+port. The USB port is behind a switch that opens on halt, so powering from it
+cold-boots the ESP32 every time the Pi goes down, and a cold boot means setup
+mode, which pulses the Pi awake again. That loop is invisible until you watch
+the serial console across a halt.
 
 **Pin map is fixed by the course labs.** GPIO25 is the Pi wake line (open-drain,
 pulsed low 250 ms) and GPIO16/17 are UART2 for the Pi text link. The buzzer
@@ -345,7 +351,7 @@ sequential runs, not simultaneous measurement:
 |---|---|---|
 | 1 | ESP32 alone | sensor node, all four variants |
 | 2 | Pi alone, camera attached, ESP32 detached | vision node |
-| 3 | Pi with ESP32 on its USB | system total, cross-check on 1 + 2 |
+| 3 | Pi with ESP32 on its 5 V rail | system total, cross-check on 1 + 2 |
 
 Camera share: measure Pi with camera closed vs camera streaming; the difference is
 the camera's contribution. No extra hardware needed.
