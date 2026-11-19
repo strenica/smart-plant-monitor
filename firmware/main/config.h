@@ -70,6 +70,23 @@
 #define PI_HANDOVER_MS 120000
 #endif
 
+// Setup mode is entered on every cold boot, because pressing EN is a cold boot
+// and that is how you ask to reframe the camera. The catch is that a board
+// powered up with no Pi attached would then stay awake forever, which silently
+// ruins any deep-sleep measurement: the run measures an awake ESP32.
+//
+// So setup mode expires. If the Pi has not said anything at all, it is not
+// coming and the node goes back to monitoring quickly. Once the Pi has spoken,
+// the node stays awake long enough for the camera preview to run to its own
+// five-minute timeout and send "mode run".
+#ifndef SETUP_WAIT_MS
+#define SETUP_WAIT_MS 120000
+#endif
+
+#ifndef SETUP_HOLD_MS
+#define SETUP_HOLD_MS 600000
+#endif
+
 // ---------------------------------------------------------------------------
 // Everything that differs between the four variants lives in variant.h, which
 // install.sh copies in from variants/<name>/ before building. Keeping it out of

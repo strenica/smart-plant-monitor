@@ -142,7 +142,13 @@ loop starts afterwards either way.
 This is the only variant where the Pi is off when you press EN, so the ESP32
 wakes it and then stays awake until the Pi answers `mode run`. Sleeping in
 between would leave the setup flag set and every later boot would land in the
-preview again. It is also the only moment the two nodes are awake together,
+preview again.
+
+The wait expires, which is what makes deep-sleep measurement possible: a board
+powered up with no Pi attached gives up after `SETUP_WAIT_MS` (120 s) and starts
+sleeping, instead of staying awake forever and being measured as if it were
+idle. Once the Pi has spoken the limit becomes `SETUP_HOLD_MS` (10 min), long
+enough for the preview to finish. It is also the only moment the two nodes are awake together,
 which makes it the only chance to hand the ESP32 the intervals from
 `configuration.txt` — the supervisor does that just before `mode run`. Change
 the interval by pressing EN, editing the config, and applying.

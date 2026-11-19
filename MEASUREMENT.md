@@ -64,6 +64,14 @@ unplug it, so flash, then disconnect, then measure.
 **Before any E run:** unplug VIN from Pi pin 4 **and** the USB cable. The ESP32
 must be powered only by the HVPM.
 
+**Then wait two minutes before capturing.** Powering the ESP32 up is a cold
+boot, and a cold boot means setup mode, which keeps the node awake. With no Pi
+attached it gives up after `SETUP_WAIT_MS` (120 s) and starts deep sleeping. A
+capture started before that measures an awake ESP32 and reports it as V3's
+deep-sleep current — the one number the whole project rests on. Watch for
+`setup mode: no Pi after 120000 ms, back to monitoring` on the console, or just
+wait two minutes.
+
 **The CP2102 USB bridge never sleeps.** It draws about 10 mA whenever it has
 5 V, which is roughly a hundred times the ESP32's deep-sleep current. Powered
 through VIN with the USB cable out, the bridge is unpowered and E4 measures the

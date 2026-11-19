@@ -197,6 +197,13 @@ unwatched.
 The flag lives in the ESP32's RTC memory and is cleared once framing is done, so
 the next boot goes straight to monitoring. A power cycle clears it too.
 
+It also expires, which matters more than it sounds. A board powered up with no
+Pi attached would otherwise stay awake forever, and a deep-sleep measurement
+would then be measuring an awake ESP32. So setup mode gives up after
+`SETUP_WAIT_MS` (120 s) if the Pi has said nothing at all, and after
+`SETUP_HOLD_MS` (10 min) once it has — long enough for the preview to run to its
+own five-minute timeout and send `mode run`.
+
 In V3 the Pi is halted, so the ESP32 wakes it on a cold boot and then stays
 awake until the Pi says `mode run`. Without that it would deep sleep before the
 Pi finished booting, the flag would never clear, and every later boot would land

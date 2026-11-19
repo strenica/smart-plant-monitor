@@ -26,6 +26,7 @@
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -46,7 +47,8 @@ static RTC_DATA_ATTR uint32_t s_interval_ms = 0;
 
 // Set when the board cold-boots, which is what pressing EN does. The Pi asks
 // about it at startup and, if set, boots into the camera preview instead of the
-// monitoring loop. Cleared when the Pi says it is done framing.
+// monitoring loop. Cleared when the Pi says it is done framing, or when it
+// expires (see SETUP_WAIT_MS).
 static RTC_DATA_ATTR bool s_setup_mode = false;
 static RTC_DATA_ATTR uint32_t s_fast_ms = 0;
 static RTC_DATA_ATTR uint32_t s_slow_ms = 0;
@@ -54,6 +56,30 @@ static RTC_DATA_ATTR uint32_t s_slow_ms = 0;
 // Set when the Pi says it has everything it needs, so the handover wait can end
 // early instead of running to its timeout.
 static volatile bool s_pi_done = false;
+
+// Has the Pi said anything at all since this boot? Setup mode waits longer for
+// it once it has, because a Pi that is talking is a Pi that is booting.
+static volatile bool s_pi_seen = false;
+
+#if DEEP_SLEEP_BETWEEN_SAMPLES
+// When setup mode started, on the CPU's own clock. Not RTC: setup mode never
+// survives a deep sleep, because the node does not sleep while it is set.
+static int64_t s_setup_started_us = 0;
+
+// How long setup mode may last. Short if the Pi has never spoken, because then
+// it is not coming; long once it has, so the camera preview can run to its own
+// timeout and send "mode run".
+static uint32_t setup_limit_ms(void)
+{
+    return s_pi_seen ? SETUP_HOLD_MS : SETUP_WAIT_MS;
+}
+
+static bool setup_expired(void)
+{
+    int64_t elapsed_ms = (esp_timer_get_time() - s_setup_started_us) / 1000;
+    return elapsed_ms >= (int64_t)setup_limit_ms();
+}
+#endif
 
 static uint32_t base_interval(void)
 {
@@ -144,6 +170,10 @@ static void handle_command(const char *cmd)
     int n = 0;
     unsigned long ms = 0, fast = 0, slow = 0;
 
+    // Anything at all means a Pi is on the other end, which is what tells setup
+    // mode to wait for the preview rather than give up after two minutes.
+    s_pi_seen = true;
+
 #if DEEP_SLEEP_BETWEEN_SAMPLES
     if (strncmp(cmd, "log?", 4) == 0) {
         dump_sample_log();
@@ -229,6 +259,9 @@ void app_main(void)
         // Pressing EN is how you ask for setup mode: the Pi comes up in the
         // camera preview so you can reframe, then returns to monitoring.
         s_setup_mode = true;
+#if DEEP_SLEEP_BETWEEN_SAMPLES
+        s_setup_started_us = esp_timer_get_time();
+#endif
     }
 
     ESP_LOGI(TAG, "=== plant monitor: %s ===", VARIANT_NAME);
@@ -338,9 +371,24 @@ void app_main(void)
             // asks "mode?" at boot and sends "mode run" when it is done.
             // Sleeping here would leave the flag set, and every later boot
             // would land in the preview again.
-            ESP_LOGI(TAG, "setup mode: staying awake");
-            vTaskDelay(pdMS_TO_TICKS(interval_ms));
-            continue;
+            //
+            // But a board powered up with no Pi attached must not stay awake
+            // forever, or a deep-sleep measurement silently measures an awake
+            // ESP32. So the wait expires, and the delay is capped at whatever
+            // is left of it so a ten-minute sample interval cannot overshoot.
+            if (setup_expired()) {
+                ESP_LOGI(TAG, "setup mode: no Pi after %lu ms, back to monitoring",
+                         (unsigned long)setup_limit_ms());
+                s_setup_mode = false;
+            } else {
+                int64_t elapsed_ms = (esp_timer_get_time() - s_setup_started_us) / 1000;
+                uint32_t left = (uint32_t)((int64_t)setup_limit_ms() - elapsed_ms);
+                uint32_t nap = interval_ms < left ? interval_ms : left;
+
+                ESP_LOGI(TAG, "setup mode: staying awake");
+                vTaskDelay(pdMS_TO_TICKS(nap));
+                continue;
+            }
         }
         ESP_LOGI(TAG, "deep sleep for %lu ms", (unsigned long)interval_ms);
         esp_sleep_enable_timer_wakeup((uint64_t)interval_ms * 1000);
