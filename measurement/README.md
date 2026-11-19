@@ -188,8 +188,12 @@ You measured the system, not the parts, so you cannot state "the Pi is 97% of
 the energy" as a measurement. You can state it as an inference from
 `v2_adaptive` against `v3_deepsleep`, and you should say which it is.
 
-If you want it measured, one extra run: unplug VIN from pin 4 and repeat
-`v2_adaptive`. The difference is the ESP32's share. Two minutes and one cable.
+If you want it measured, one extra run: unplug the ESP32 entirely — VIN from
+pin 4 *and* the USB cable — and repeat `v2_adaptive`. The difference is the
+ESP32's share, plus the CP2102 bridge that goes with it. Unplugging VIN alone
+proves nothing: the board then runs off the Pi's USB port, which is downstream
+of the meter, so the total does not move. `v2_adaptive.py` survives the missing
+serial port and keeps looping, so the Pi's own draw is still representative.
 
 ## Before you start
 
