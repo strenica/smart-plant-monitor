@@ -1,0 +1,41 @@
+# Measurement config for v3_trigger.
+#
+# Copy this over config/configuration.txt before the run:
+#     cp measurement/configs/v3_trigger.txt config/configuration.txt
+#
+# CAPTURE IS 180 s. The point of this run is to see BOTH phases in one trace:
+# the ESP32 sampling with the Pi off, then the Pi waking, logging and taking a
+# photo. v3_event fires on the first sample, so its trace is a spike at the
+# start and idle after; this one is idle first and a spike later, which is what
+# V3 actually looks like in use.
+#
+# HOW TO RUN IT
+#
+#   1. flash and let it settle, as usual
+#   2. start the capture
+#   3. wait 60-120 s, so the ESP32 has taken one or two samples with the Pi off
+#   4. trigger a rule by hand:
+#        rule 1  breathe on the DHT11 until the humidity passes 80%
+#        rule 2  hold an ice pack against the DHT11 until it drops below 15 C
+#        rule 3  lift the soil probe out of the soil (air reads 0)
+#   5. the ESP32 pulses the Pi, which boots, logs the backlog, takes a photo
+#      and halts again
+#
+# Any one of the three is enough. The 30-minute cooldown means it fires once,
+# so the trace has exactly one wake in it.
+#
+# Only the keys this variant actually reads are listed.
+#
+# Deployed: 60 s fast / 600 s slow, one photo per wake
+
+1: air_humidity > 80
+2: air_temperature < 15
+3: soil_humidity < 300
+
+# Timing, in seconds.
+# Deployed intervals. Three ESP32 wakes in a 180 s capture, plus the one the
+# trigger causes.
+sample_interval = 60
+adaptive_fast = 60
+adaptive_slow = 600
+log_max_lines = 0

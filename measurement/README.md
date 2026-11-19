@@ -110,6 +110,33 @@ never get pushed — a deadlock.
 `run.sh` knows that `v3_event` flashes the `v3_deepsleep` firmware — only the
 rules differ.
 
+## The trigger run
+
+`v3_trigger` is the same firmware again, but its rules fire on demand instead of
+on the first sample. That gives a trace with **both phases in one capture**: the
+ESP32 sampling with the Pi off, then the Pi waking, logging and taking a photo.
+
+`v3_event` fires immediately, so its trace is a spike at the start and idle
+after. `v3_trigger` is idle first and a spike later, which is what V3 actually
+looks like in use.
+
+```bash
+./measurement/run.sh v3_trigger
+```
+
+Then, during the capture:
+
+1. start the capture
+2. wait 60–120 s, so the ESP32 has taken one or two samples with the Pi off
+3. trigger a rule by hand:
+   - **rule 1** — breathe on the DHT11 until humidity passes 80%
+   - **rule 2** — hold an ice pack against it until it drops below 15 °C
+   - **rule 3** — lift the soil probe out of the soil (air reads 0)
+4. the ESP32 pulses the Pi, which boots, logs the backlog, takes a photo, halts
+
+Any one of the three is enough. The 30-minute cooldown means it fires once, so
+the trace has exactly one wake in it.
+
 ## After
 
 ```bash
