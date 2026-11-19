@@ -41,6 +41,27 @@ BUILD="$ROOT/firmware/build"
 
 VARIANTS=(v0_baseline v1_duty v2_adaptive v3_deepsleep)
 
+# esptool lives in a venv, not in the system python. A fresh checkout has no
+# .venv yet, and the flash step runs before the Pi-code step that would create
+# one, so look for an interpreter that already has esptool and only build a venv
+# as a last resort. PI_DIR keeps its literal ~ in the variable, so expand it.
+PI_DIR_ABS="${PI_DIR/#\~/$HOME}"
+
+find_esptool_python() {
+  local candidate
+  for candidate in "$ROOT/.venv/bin/python" "$PI_DIR_ABS/.venv/bin/python"; do
+    if [ -x "$candidate" ] && "$candidate" -c 'import esptool' 2>/dev/null; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  if python3 -c 'import esptool' 2>/dev/null; then
+    printf 'python3\n'
+    return 0
+  fi
+  return 1
+}
+
 usage() {
   sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
@@ -167,7 +188,13 @@ if [ "$PI_ONLY" -eq 0 ]; then
     echo "== built, not flashing (--no-flash)"
   elif [ "$LOCAL" -eq 1 ]; then
     echo "== flashing locally on /dev/ttyUSB0"
-    "$ROOT/.venv/bin/python" -m esptool \
+    PY="$(find_esptool_python)" || {
+      echo "== no python with esptool, creating $ROOT/.venv"
+      python3 -m venv --system-site-packages "$ROOT/.venv"
+      "$ROOT/.venv/bin/pip" install -q -r "$ROOT/requirements.txt"
+      PY="$ROOT/.venv/bin/python"
+    }
+    "$PY" -m esptool \
         --port /dev/ttyUSB0 --baud "$BAUD" --no-stub write-flash \
         --flash-mode dio --flash-size 4MB --flash-freq 40m \
         0x1000 "$BUILD/bootloader/bootloader.bin" \
