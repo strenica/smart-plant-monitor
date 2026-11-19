@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import re
 import socket
 import subprocess
 import sys
@@ -60,6 +61,29 @@ def preview_running() -> bool:
     with socket.socket() as sock:
         sock.settimeout(0.2)
         return sock.connect_ex(("127.0.0.1", PREVIEW_PORT)) == 0
+
+
+def running_variant() -> str | None:
+    """Which variant the monitor unit is running, or None if it cannot be read.
+
+    The rules in configuration.txt are read at runtime by V0 and V1, but baked
+    into the firmware for V2 and V3, so a saved file only changes the rules for
+    the first two. The dashboard has to know which it is in order to say so
+    instead of claiming a save that will not take effect.
+    """
+    try:
+        result = subprocess.run(
+            ["systemctl", "cat", MONITOR_UNIT],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    match = re.search(r"--variant\s+(\S+)", result.stdout)
+    return match.group(1) if match else None
 
 
 def restart_monitor() -> str:
@@ -261,11 +285,20 @@ def make_handler(log_path: Path, config_path: Path, capture_path: Path,
             config_path.write_text(text)
 
             restart = not preview_running()
-            note = (
-                "monitor restarting"
-                if restart
-                else "preview is running, monitor left alone"
-            )
+            variant = running_variant()
+            if variant in ("v2_adaptive", "v3_deepsleep"):
+                # These evaluate rules on the ESP32, which cannot read the Pi's
+                # disk while the Pi is off, so install.sh bakes the rules into
+                # the firmware. The restart still applies the timing and the
+                # retention, but the rules will not change.
+                note = (
+                    f"rules are built into {variant}, so they need "
+                    f"./install.sh {variant} to take effect"
+                )
+            elif restart:
+                note = "monitor restarting"
+            else:
+                note = "preview is running, monitor left alone"
             self._config(
                 text=text,
                 saved=f"saved: {len(rules)} rules, "
