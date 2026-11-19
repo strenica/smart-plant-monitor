@@ -34,13 +34,19 @@
 #   heartbeat         how often the Pi photographs when nothing happens (V2)
 #   adaptive_fast     interval while the readings are moving (V2, V3)
 #   adaptive_slow     interval after three quiet samples (V2, V3)
+#   wake_every_sample 1 = wake the Pi after every sample, rules ignored (V3).
+#                     For measurement and demos: it turns V3's one-wake-per-
+#                     event behaviour into a visible on/off cycle. Leave it at
+#                     0 for the deployed system, where waking the Pi for
+#                     nothing is exactly the cost V3 exists to avoid.
 #   log_max_lines     trim events_log.txt to this many lines. 0 = never trim,
 #                     which is the default here: the log is the evidence for
 #                     the report, so nothing is thrown away.
 #
-# The Pi pushes sample_interval and the adaptive bounds over UART2, but only
-# while the ESP32 is awake. In V3 that means setup mode, or the next time it
-# wakes the Pi. Until then the values compiled into the variant apply.
+# The Pi pushes sample_interval, the adaptive bounds and wake_every_sample over
+# UART2, but only while the ESP32 is awake. In V3 that means setup mode, or the
+# next time it wakes the Pi. Until then the values compiled into the variant
+# apply.
 # ---------------------------------------------------------------------------
 
 sample_interval = 60
@@ -48,4 +54,5 @@ image_interval = 300
 heartbeat = 3600
 adaptive_fast = 10
 adaptive_slow = 600
+wake_every_sample = 0
 log_max_lines = 0

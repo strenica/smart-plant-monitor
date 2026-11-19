@@ -12,7 +12,7 @@ set -euo pipefail
 
 if [ $# -lt 1 ]; then
   echo "usage: run.sh <variant>" >&2
-  echo "  v0_baseline  v1_duty  v2_adaptive  v3_deepsleep  v3_event  v3_trigger" >&2
+  echo "  v0_baseline  v1_duty  v2_adaptive  v3_deepsleep  v3_event  v3_trigger  v3_loop" >&2
   exit 1
 fi
 
@@ -27,10 +27,10 @@ if [ ! -f "$CONFIG" ]; then
   exit 1
 fi
 
-# v3_event and v3_trigger are the same firmware as v3_deepsleep; only the
-# rules differ.
+# v3_event, v3_trigger and v3_loop are the same firmware as v3_deepsleep;
+# only the rules and the timing differ.
 VARIANT="$NAME"
-case "$NAME" in v3_event|v3_trigger) VARIANT="v3_deepsleep" ;; esac
+case "$NAME" in v3_event|v3_trigger|v3_loop) VARIANT="v3_deepsleep" ;; esac
 
 cp "$CONFIG" "$ROOT/config/configuration.txt"
 echo "== config:  measurement/configs/${NAME}.txt"

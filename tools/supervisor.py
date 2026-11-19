@@ -152,6 +152,8 @@ def push_timing(port: str, baud: int, config_path: Path) -> None:
             f"set adaptive {int(timing.adaptive_fast * 1000)} "
             f"{int(timing.adaptive_slow * 1000)}",
         )
+    if timing.wake_every_sample is not None:
+        tell_esp32(port, baud, f"set wake {1 if timing.wake_every_sample else 0}")
 
 
 def main() -> None:

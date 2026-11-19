@@ -53,6 +53,12 @@ static RTC_DATA_ATTR bool s_setup_mode = false;
 static RTC_DATA_ATTR uint32_t s_fast_ms = 0;
 static RTC_DATA_ATTR uint32_t s_slow_ms = 0;
 
+// Measurement mode: wake the Pi on every sample instead of only when a rule
+// fires, so one capture holds several wake cycles rather than one. Set from
+// configuration.txt over UART; RTC memory keeps it across deep sleep, and a
+// power cycle clears it, which is why the Pi pushes it again in setup mode.
+static RTC_DATA_ATTR bool s_wake_every = false;
+
 // Set when the Pi says it has everything it needs, so the handover wait can end
 // early instead of running to its timeout.
 static volatile bool s_pi_done = false;
@@ -230,6 +236,9 @@ static void handle_command(const char *cmd)
         s_fast_ms = (uint32_t)fast;
         s_slow_ms = (uint32_t)slow;
         ESP_LOGI(TAG, "adaptive bounds now %lu..%lu ms", fast, slow);
+    } else if (sscanf(cmd, "set wake %d", &n) == 1) {
+        s_wake_every = n != 0;
+        ESP_LOGI(TAG, "wake the Pi every sample: %s", s_wake_every ? "yes" : "no");
     }
 }
 
@@ -354,8 +363,9 @@ void app_main(void)
 #endif
 
 #if DEEP_SLEEP_BETWEEN_SAMPLES
-        // The Pi is off. Only wake it when something is worth reporting.
-        if (nf > 0) {
+        // The Pi is off. Only wake it when something is worth reporting, or on
+        // every sample when the run is measuring the cost of a wake.
+        if (nf > 0 || s_wake_every) {
             pi_link_wake();
             wait_for_pi();
         }

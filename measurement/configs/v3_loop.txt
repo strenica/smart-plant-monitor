@@ -1,0 +1,32 @@
+# Measurement config for v3_loop.
+#
+# Copy this over config/configuration.txt before the run:
+#     cp measurement/configs/v3_loop.txt config/configuration.txt
+#
+# V3 with the Pi woken on EVERY sample instead of only when a rule fires. One
+# 180 s capture then holds two or three complete wake cycles instead of one, so
+# the cost of a wake can be read off a periodic trace and divided by the number
+# of cycles. v3_trigger needs a hand on the soil probe to produce even one wake;
+# this one runs unattended.
+#
+# The rules are quiet, so every wake in the trace comes from wake_every_sample
+# and nothing else. The buzzer stays silent for the same reason: a beep every
+# cycle would land in the measurement.
+#
+# The Pi is up for roughly 35 s of each cycle (boot, handover, photo, halt) and
+# off for the rest, so the trace shows a clear on/off pattern rather than a flat
+# line. adaptive_slow is pinned to adaptive_fast on purpose: left at 600 s the
+# interval would stretch after three quiet samples and the loop would stop.
+#
+# Deployed: 60 s fast / 600 s slow, camera per wake
+
+1: air_humidity > 99
+2: air_temperature < 0
+3: soil_humidity < 0
+
+# Timing, in seconds.
+sample_interval = 60
+adaptive_fast = 60
+adaptive_slow = 60
+wake_every_sample = 1
+log_max_lines = 0

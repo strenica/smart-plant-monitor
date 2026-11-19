@@ -20,8 +20,9 @@ so. Check it before trusting a run.
 | `v2_adaptive` | 3 | 180 s | 9 min | adaptive sampling, Pi still on |
 | `v3_deepsleep` | 3 | 180 s | 9 min | the headline: Pi halted, ESP32 sleeping |
 | `v3_event` | 3 | 180 s | 9 min | what one wake costs |
+| `v3_loop` | 3 | 180 s | 9 min | several wake cycles in one trace |
 
-45 minutes of capture. With flashing and settling, about 90 minutes.
+54 minutes of capture. With flashing and settling, about 110 minutes.
 
 ## The compression
 
@@ -136,6 +137,30 @@ Then, during the capture:
 
 Any one of the three is enough. The 30-minute cooldown means it fires once, so
 the trace has exactly one wake in it.
+
+## The loop run
+
+`v3_trigger` needs a hand on the probe to produce even one wake. `v3_loop` wakes
+the Pi on **every** sample instead, so a single capture holds two or three
+complete cycles and the cost of a wake can be read off a periodic trace and
+divided by the number of cycles. It also runs unattended, which makes it the
+better one to demo.
+
+```bash
+./measurement/run.sh v3_loop
+```
+
+`wake_every_sample = 1` in the config is what does it: the ESP32 pulses the Pi
+after every sample regardless of the rules. The rules in that config are quiet,
+so every wake in the trace comes from the flag and nothing else, and the buzzer
+stays silent for the same reason.
+
+`adaptive_slow` is pinned to `adaptive_fast` on purpose. Left at 600 s the
+interval would stretch after three quiet samples and the loop would stop.
+
+The Pi is up for roughly 35 s of each cycle — boot, handover, photo, halt — and
+off for the rest, so the trace shows a clear on/off pattern rather than a flat
+line. At 60 s sampling that is two cycles in a 180 s capture.
 
 ## After
 
