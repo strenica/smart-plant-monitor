@@ -4,48 +4,51 @@ The energy evaluation. Run on the laptop, with the Monsoon HVPM feeding the Pi
 and the ESP32 taking its power from the Pi's 5 V rail — the system as it
 actually runs, measured as one load.
 
-The Monsoon resets every minute, so **a capture is 60 s**. The configs in
-`configs/` compress each variant's timescale so that one capture contains three
-of whatever it does. That is a compromise, and the arithmetic to undo it is
-below.
+**A capture is 180 s, three per variant.** That is long enough for every
+variant's own behaviour to be representative, so the configs use the deployed
+intervals — with one exception, V1's camera, explained below.
+
+If the meter resets mid-capture, the summary's dropped-sample count will say
+so. Check it before trusting a run.
 
 ## What this produces
 
 | Run | Captures | Each | Total | Answers |
 |---|---|---|---|---|
-| `v0_baseline` | 3 | 60 s | 3 min | the baseline |
-| `v1_duty` | 3 | 60 s | 3 min | fixed duty cycle |
-| `v2_adaptive` | 3 | 60 s | 3 min | adaptive sampling, Pi still on |
-| `v3_deepsleep` | 3 | 60 s | 3 min | the headline: Pi halted, ESP32 sleeping |
-| `v3_event` | 3 | 60 s | 3 min | what one wake costs |
+| `v0_baseline` | 3 | 180 s | 9 min | the baseline |
+| `v1_duty` | 3 | 180 s | 9 min | fixed duty cycle |
+| `v2_adaptive` | 3 | 180 s | 9 min | adaptive sampling, Pi still on |
+| `v3_deepsleep` | 3 | 180 s | 9 min | the headline: Pi halted, ESP32 sleeping |
+| `v3_event` | 3 | 180 s | 9 min | what one wake costs |
 
-15 minutes of capture. With flashing and settling, about an hour.
+45 minutes of capture. With flashing and settling, about 90 minutes.
 
-## The compression, and what it costs
+## The compression
+
+At 180 s every variant's own behaviour is representative, so the configs use
+the **deployed** intervals. There is one exception:
 
 | Variant | Deployed | Measured | Factor |
 |---|---|---|---|
 | V0 | 2 s sampling | 2 s | none |
-| V1 | camera every 300 s | camera every 20 s | 15× |
-| V2 | slow interval 600 s | slow interval 60 s | 10× |
-| V3 | sample every 60 s | sample every 20 s | 3× |
+| V1 | camera every 300 s | **camera every 60 s** | 5× |
+| V2 | 10 s fast / 600 s slow | same | none |
+| V3 | 60 s fast / 600 s slow | same | none |
 
-At the deployed intervals a 60 s window would contain one event or none, and
-the mean would be dominated by whether it landed inside the window. Compressing
-puts three events in every capture, so the mean is stable.
+V1's camera fires every 300 s, which does not fit in a 180 s window — a capture
+would contain one photo or none, and the mean would depend on which. At 60 s it
+contains three.
 
-**The measured energy per hour is therefore higher than the deployed figure.**
-It is the idle cost plus three events. To get the deployed figure, take the
-event part out, divide it by the factor, and put it back:
+**Only V1's figure needs rescaling.** Take the camera component out, divide it
+by 5, put it back:
 
 ```
-E/hour(deployed) = idle + (E/hour(measured) - idle) / factor
+E/hour(deployed) = idle + (E/hour(measured) - idle) / 5
 ```
 
-`idle` is the same variant with nothing happening — for V1 that is the camera
-off, for V3 it is no rule firing. If you do not have an idle run, the
-`v3_deepsleep` capture is a good proxy for V3, and V0 is a proxy for V1's
-non-camera cost.
+`idle` is V1 with the camera off. V0 is a reasonable proxy for that.
+
+Everything else is measured at the deployed interval and needs no correction.
 
 ## Procedure, once per variant
 
@@ -80,7 +83,7 @@ measure the warm-up.
 
 ```bash
 for n in 1 2 3; do
-  hvpm capture -o v0_baseline_${n}.csv --duration 60 --voltage 5 --json \
+  hvpm capture -o v0_baseline_${n}.csv --duration 180 --voltage 5 --json \
     | tee v0_baseline_${n}.json
   sleep 2
 done

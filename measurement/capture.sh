@@ -5,8 +5,8 @@
 #   ./measurement/capture.sh v3_deepsleep 10
 #
 # Writes measurement/data/<variant>_<n>.csv and .json, and prints the summary
-# for each run. DURATION defaults to 60 because the Monsoon resets every
-# minute; override it if that turns out not to be true.
+# for each run. DURATION defaults to 180 s, which is long enough for every
+# variant's own behaviour to be representative.
 #
 # Run this on the laptop, where the HVPM is attached. The Pi is the load.
 
@@ -14,7 +14,7 @@ set -euo pipefail
 
 VARIANT="${1:?usage: capture.sh <variant> <count>}"
 COUNT="${2:?usage: capture.sh <variant> <count>}"
-DURATION="${DURATION:-60}"
+DURATION="${DURATION:-180}"
 VOLTAGE="${VOLTAGE:-5}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

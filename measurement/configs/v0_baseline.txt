@@ -3,18 +3,10 @@
 # Copy this over config/configuration.txt before the run:
 #     cp measurement/configs/v0_baseline.txt config/configuration.txt
 #
-# COMPRESSED TIMESCALE. The intervals below are shorter than the deployed
-# ones so that a single 60 s capture contains three of whatever this variant
-# does. The Monsoon resets every minute, so a capture cannot be longer, and
-# at the real intervals a 60 s window would contain one event or none.
-#
-# The cost of that: the energy per hour here is NOT the deployed figure. It
-# is the idle cost plus three events. Divide the event part by three to get
-# the per-event cost, then compose for the real interval:
-#
-#     E/hour(real) = idle + events_per_hour(real) x event_cost
-#
-# measurement/README.md has the arithmetic.
+# CAPTURE IS 180 s, three per variant. At that length every variant's own
+# behaviour is representative, so the intervals below are the DEPLOYED ones
+# except where noted. Only V1 is compressed: its camera fires every 300 s,
+# which does not fit in a 180 s window.
 #
 # Only the keys this variant actually reads are listed. Anything missing falls
 # back to the compiled default in variants/v0_baseline/variant.h, which is what
@@ -26,6 +18,7 @@
 2: air_temperature < 0
 3: soil_humidity < 0
 
-# Timing, in seconds. Compressed, see above.
+# Timing, in seconds.
+# Deployed intervals. 90 samples in a 180 s capture.
 sample_interval = 2
 log_max_lines = 50000

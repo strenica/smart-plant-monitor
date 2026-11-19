@@ -50,7 +50,7 @@ cat <<EOF
 == then, on the machine with the HVPM:
 
      for n in 1 2 3; do
-       hvpm capture -o ${NAME}_\${n}.csv --duration 60 --voltage 5 --json \\
+       hvpm capture -o ${NAME}_\${n}.csv --duration 180 --voltage 5 --json \\
          | tee ${NAME}_\${n}.json
        sleep 2
      done

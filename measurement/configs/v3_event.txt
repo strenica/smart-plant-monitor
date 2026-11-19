@@ -3,18 +3,14 @@
 # Copy this over config/configuration.txt before the run:
 #     cp measurement/configs/v3_event.txt config/configuration.txt
 #
-# COMPRESSED TIMESCALE. The intervals below are shorter than the deployed
-# ones so that a single 60 s capture contains three of whatever this variant
-# does. The Monsoon resets every minute, so a capture cannot be longer, and
-# at the real intervals a 60 s window would contain one event or none.
+# CAPTURE IS 180 s, three per variant. At that length every variant's own
+# behaviour is representative, so the intervals below are the DEPLOYED ones
+# except where noted. Only V1 is compressed: its camera fires every 300 s,
+# which does not fit in a 180 s window.
 #
-# The cost of that: the energy per hour here is NOT the deployed figure. It
-# is the idle cost plus three events. Divide the event part by three to get
-# the per-event cost, then compose for the real interval:
-#
-#     E/hour(real) = idle + events_per_hour(real) x event_cost
-#
-# measurement/README.md has the arithmetic.
+# Rule 1 fires on the first sample, because the room is above 40% humidity.
+# That wakes the Pi once per capture: the cooldown is 30 minutes, so it
+# cannot fire twice. Three captures give three events.
 #
 # Only the keys this variant actually reads are listed. Anything missing falls
 # back to the compiled default in variants/v3_deepsleep/variant.h, which is what
@@ -26,8 +22,10 @@
 2: air_temperature < 0
 3: soil_humidity < 0
 
-# Timing, in seconds. Same as v3_deepsleep.txt.
-sample_interval = 20
-adaptive_fast = 20
-adaptive_slow = 60
+# Timing, in seconds.
+# Deployed intervals. Three ESP32 wakes in a 180 s capture, and
+# the Pi stays halted throughout because no rule fires.
+sample_interval = 60
+adaptive_fast = 60
+adaptive_slow = 600
 log_max_lines = 50000
