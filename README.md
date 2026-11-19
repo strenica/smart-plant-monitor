@@ -65,6 +65,7 @@ firmware/          ESP-IDF project for the ESP32, shared by all four
     dht11.c        bit-bang one-wire driver (ESP-IDF has no official one)
     buzzer.c       LEDC PWM at 2300 Hz
     pi_link.c      wake pulse + UART2
+    sample_log.c   ring buffer of readings in RTC memory, for V3
     rules.c        ESP32-side rule engine, used by V2 and V3
 pi/                Raspberry Pi side
   common/config.py configuration.txt and reading parsers
@@ -130,6 +131,38 @@ cd ~/plant
 ```
 
 `--dry-run` evaluates and logs without buzzing. Drop it to drive the buzzer.
+
+## Logging
+
+Every variant writes the same file, `logs/events_log.txt`, in the format the
+spec asks for:
+
+```
+Mon Oct 21 14:04:30 CEST 2024: air_humidity = 48
+Mon Oct 21 14:04:30 CEST 2024: air_temperature = 13
+Mon Oct 21 14:04:30 CEST 2024: soil_humidity = 1000
+```
+
+V0, V1 and V2 stream each reading to the Pi as it is taken, so the log is
+written live. V3 cannot: the Pi is powered off when the reading happens.
+
+So the ESP32 keeps the last 96 readings in RTC memory — 1.6 h at the 60 s fast
+interval, 16 h at the 10 min slow one — and hands them over when the Pi next
+wakes. The Pi asks for them first thing, before it touches the camera, and the
+ESP32 clears its buffer once they are sent so nothing is logged twice.
+
+The handover needs both boards awake at once, which only happens in the window
+after the ESP32 pulses the Pi's wake line. The ESP32 stays awake for that window
+(`PI_HANDOVER_MS`, 120 s by default) and the Pi says `bye` as soon as it has the
+readings, so the usual wait is a second or two. If the Pi never shows up the
+ESP32 sleeps anyway and keeps the buffer for next time.
+
+The log lines carry the Pi's clock, because that is when the Pi learned about
+them. The ESP32's own sample times are recorded in the summary line above them:
+
+```
+Thu Nov 19 12:36:45 CET 2026: v3 wake: 12 buffered readings, esp32 t=3600000..4260000 ms
+```
 
 ## Setup mode: press EN to reframe
 

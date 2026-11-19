@@ -62,6 +62,14 @@
 // How many times to retry a failed DHT11 read before giving up on that sample.
 #define DHT_RETRIES 3
 
+// How long the ESP32 stays awake after waking the Pi, waiting for it to boot
+// and collect the readings buffered while it was off. The Pi says "bye" as soon
+// as it has them, so this is a ceiling rather than a typical wait. Only V3 uses
+// it; the other variants never power the Pi down.
+#ifndef PI_HANDOVER_MS
+#define PI_HANDOVER_MS 120000
+#endif
+
 // ---------------------------------------------------------------------------
 // Everything that differs between the four variants lives in variant.h, which
 // install.sh copies in from variants/<name>/ before building. Keeping it out of

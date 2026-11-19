@@ -16,6 +16,7 @@
 #include "sensors.h"
 #include "buzzer.h"
 #include "pi_link.h"
+#include "sample_log.h"
 
 #if RULES_ON_ESP32
 #include "rules.h"
@@ -49,6 +50,10 @@ static RTC_DATA_ATTR uint32_t s_interval_ms = 0;
 static RTC_DATA_ATTR bool s_setup_mode = false;
 static RTC_DATA_ATTR uint32_t s_fast_ms = 0;
 static RTC_DATA_ATTR uint32_t s_slow_ms = 0;
+
+// Set when the Pi says it has everything it needs, so the handover wait can end
+// early instead of running to its timeout.
+static volatile bool s_pi_done = false;
 
 static uint32_t base_interval(void)
 {
@@ -92,10 +97,59 @@ static uint32_t adaptive_interval(const struct reading *r)
 }
 #endif
 
+#if DEEP_SLEEP_BETWEEN_SAMPLES
+// Hand the Pi everything it missed while it was powered off. The lines are
+// ordinary reading lines with a "log " prefix, so the Pi reuses the parser it
+// already has for live readings instead of learning a second format.
+static void dump_sample_log(void)
+{
+    int n = sample_log_count();
+    char line[128];
+    char out[144];
+
+    for (int i = 0; i < n; i++) {
+        if (!sample_log_line(i, line, sizeof(line))) {
+            break;
+        }
+        snprintf(out, sizeof(out), "log %s", line);
+        pi_link_send(out);
+    }
+    pi_link_send("log end");
+
+    ESP_LOGI(TAG, "handed over %d buffered readings", n);
+    sample_log_clear();
+}
+
+// After waking the Pi, stay awake until it has collected the backlog. A Pi 4
+// takes tens of seconds to boot, so this is the one moment both are running.
+// The Pi says "bye" as soon as it has the readings, so the usual wait is a
+// second or two rather than the full ceiling.
+static void wait_for_pi(void)
+{
+    uint32_t waited = 0;
+
+    while (!s_pi_done && waited < PI_HANDOVER_MS) {
+        vTaskDelay(pdMS_TO_TICKS(250));
+        waited += 250;
+    }
+    if (!s_pi_done) {
+        ESP_LOGI(TAG, "no Pi after %d ms, sleeping anyway", PI_HANDOVER_MS);
+    }
+    s_pi_done = false;
+}
+#endif
+
 static void handle_command(const char *cmd)
 {
     int n = 0;
     unsigned long ms = 0, fast = 0, slow = 0;
+
+#if DEEP_SLEEP_BETWEEN_SAMPLES
+    if (strncmp(cmd, "log?", 4) == 0) {
+        dump_sample_log();
+        return;
+    }
+#endif
 
     if (sscanf(cmd, "buzz %d", &n) == 1 && n > 0 && n <= 5) {
         buzzer_beep(n);
@@ -104,6 +158,8 @@ static void handle_command(const char *cmd)
     } else if (strncmp(cmd, "mode run", 8) == 0) {
         s_setup_mode = false;
         ESP_LOGI(TAG, "setup mode cleared");
+    } else if (strncmp(cmd, "bye", 3) == 0) {
+        s_pi_done = true;
     } else if (sscanf(cmd, "set interval %lu", &ms) == 1 && ms >= 1000) {
         s_interval_ms = (uint32_t)ms;
         ESP_LOGI(TAG, "sample interval now %lu ms", ms);
@@ -170,7 +226,7 @@ void app_main(void)
         buzzer_beep(3);
     }
 
-    xTaskCreate(command_task, "commands", 3072, NULL, 5, NULL);
+    xTaskCreate(command_task, "commands", 4096, NULL, 5, NULL);
 
     if (cold_boot) {
         // Tell a Pi that is already running. A Pi that is still booting misses
@@ -196,6 +252,12 @@ void app_main(void)
         }
 
         ESP_LOGI(TAG, "%s", line);
+
+#if DEEP_SLEEP_BETWEEN_SAMPLES
+        // Nobody is listening: the Pi is off. Keep the reading for the next
+        // time it wakes.
+        sample_log_add(&r);
+#endif
 
         uint32_t interval_ms = base_interval();
 
@@ -223,6 +285,7 @@ void app_main(void)
         // The Pi is off. Only wake it when something is worth reporting.
         if (nf > 0) {
             pi_link_wake();
+            wait_for_pi();
         }
 #else
         pi_link_send(line);
