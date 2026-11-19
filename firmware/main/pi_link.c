@@ -71,15 +71,52 @@ void pi_link_send(const char *text)
     uart_write_bytes(PI_UART, "\n", 1);
 }
 
+// One line at a time, with the rest kept for the next call.
+//
+// The UART hands over whatever happens to be in the FIFO, which can be several
+// lines at once: the Pi writes a rule push as five lines 50 ms apart and this
+// task polls every 100 ms. Returning the whole block made the caller parse only
+// the first line and silently drop the rest, which is how a three-rule push
+// ended up saving one rule.
+#define PI_RX_LINE 160
+
+static char   s_line[PI_RX_LINE];
+static size_t s_line_len;
+
 int pi_link_recv(char *buf, size_t len)
 {
     if (len < 2) {
         return 0;
     }
-    int n = uart_read_bytes(PI_UART, buf, len - 1, 0);   // 0 ticks = do not block
-    if (n > 0) {
-        buf[n] = '\0';
-        return n;
+
+    while (1) {
+        char *nl = memchr(s_line, '\n', s_line_len);
+        if (nl != NULL) {
+            size_t n = (size_t)(nl - s_line);
+            if (n > len - 1) {
+                n = len - 1;
+            }
+            memcpy(buf, s_line, n);
+            buf[n] = '\0';
+            if (n > 0 && buf[n - 1] == '\r') {
+                buf[n - 1] = '\0';   // tolerate a CRLF sender
+            }
+
+            size_t consumed = (size_t)(nl - s_line) + 1;
+            memmove(s_line, s_line + consumed, s_line_len - consumed);
+            s_line_len -= consumed;
+            return (int)n;
+        }
+
+        if (s_line_len >= sizeof(s_line)) {
+            s_line_len = 0;   // a line longer than the buffer: drop it, do not wedge
+        }
+
+        int got = uart_read_bytes(PI_UART, s_line + s_line_len,
+                                  sizeof(s_line) - s_line_len, 0);
+        if (got <= 0) {
+            return 0;         // nothing more yet
+        }
+        s_line_len += (size_t)got;
     }
-    return 0;
 }
