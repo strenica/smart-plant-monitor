@@ -263,11 +263,28 @@ if [ "$PI_ONLY" -eq 0 ]; then
     }
     read -ra FLASH_ARGS <<< "$(esptool_flash_args "$PY")"
     echo "== esptool: $PY (${FLASH_ARGS[0]})"
-    "$PY" -m esptool \
-        --port /dev/ttyUSB0 --baud "$BAUD" --no-stub "${FLASH_ARGS[@]}" \
-        0x1000 "$BUILD/bootloader/bootloader.bin" \
-        0x8000 "$BUILD/partition_table/partition-table.bin" \
-        0x10000 "$BUILD/plant_monitor.bin"
+    # The board is usually in deep sleep when this runs, and the ROM loader
+    # occasionally drops out mid-handshake ("The chip stopped responding")
+    # before a single byte is written. Retrying is safe: a failed attempt
+    # leaves the flash untouched, and a successful one rewrites all three
+    # images anyway.
+    attempt=1
+    while :; do
+      if "$PY" -m esptool \
+          --port /dev/ttyUSB0 --baud "$BAUD" --no-stub "${FLASH_ARGS[@]}" \
+          0x1000 "$BUILD/bootloader/bootloader.bin" \
+          0x8000 "$BUILD/partition_table/partition-table.bin" \
+          0x10000 "$BUILD/plant_monitor.bin"; then
+        break
+      fi
+      if [ "$attempt" -ge 3 ]; then
+        echo "== flash failed $attempt times, giving up" >&2
+        exit 1
+      fi
+      attempt=$((attempt + 1))
+      echo "== flash failed, retrying ($attempt/3)"
+      sleep 2
+    done
   else
     echo "== flashing on $PI"
     ssh "$PI" "mkdir -p $FW_DIR"
