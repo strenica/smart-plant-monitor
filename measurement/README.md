@@ -49,14 +49,10 @@ non-camera cost.
 
 ## Procedure, once per variant
 
-**Steps 1-4 are on the Pi, step 5 is on the laptop** (the HVPM is attached
-there). `install.sh --local` does not rsync, so a config copied on the laptop
-never reaches the Pi. Running `./install.sh <variant>` from the laptop instead
-*does* rsync and would overwrite the Pi's config with the laptop's — which is
-fine, but then the copy has to happen on the laptop. Pick one machine for the
-config and stay on it.
+Everything happens on the Pi. `--local` does not rsync, so the config has to
+come from the repository — and it does, the measurement configs are committed.
 
-**1. Get the run book onto the Pi.**
+**1. Pull.**
 
 ```bash
 ssh admin@<pi>
@@ -64,34 +60,33 @@ cd ~/plant_git_test/smart-plant-monitor
 git pull
 ```
 
-**2. Put the measurement config in place.**
+**2. Prepare and flash.**
 
 ```bash
-cp measurement/configs/v0_baseline.txt config/configuration.txt
+./measurement/run.sh v0_baseline
 ```
 
-**3. Flash the variant.** This also resets the ESP32, clearing its RTC.
+That copies `measurement/configs/v0_baseline.txt` over `config/configuration.txt`,
+flashes the variant, and prints the capture command for the HVPM machine.
 
-```bash
-./install.sh v0_baseline --local
-```
-
-**4. Let it settle.** Powering up is a cold boot, which means setup mode, which
-keeps the ESP32 awake. Wait until the variant is actually running:
+**3. Let it settle.** About three minutes. Powering up is a cold boot, which
+means setup mode, which keeps the ESP32 awake — capture before this and you
+measure the warm-up.
 
 - V3: `deep sleep for ...` on the console
 - V0/V1/V2: readings scrolling
 
-About three minutes. **Do not capture before this** — you would measure the
-warm-up.
-
-**5. Capture, on the laptop.**
+**4. Capture, on the machine with the HVPM.** The command is printed by step 2:
 
 ```bash
-./measurement/capture.sh v0_baseline 3
+for n in 1 2 3; do
+  hvpm capture -o v0_baseline_${n}.csv --duration 60 --voltage 5 --json \
+    | tee v0_baseline_${n}.json
+  sleep 2
+done
 ```
 
-**6. Repeat** for `v1_duty`, `v2_adaptive`, `v3_deepsleep`, `v3_event`.
+**5. Repeat** for `v1_duty`, `v2_adaptive`, `v3_deepsleep`, `v3_event`.
 
 ## The event run
 
@@ -106,9 +101,11 @@ rules in the ESP32's RTC, nothing fires, the Pi never wakes, and the new rules
 never get pushed — a deadlock.
 
 ```bash
-cp measurement/configs/v3_event.txt config/configuration.txt
-./install.sh v3_deepsleep --local
+./measurement/run.sh v3_event
 ```
+
+`run.sh` knows that `v3_event` flashes the `v3_deepsleep` firmware — only the
+rules differ.
 
 ## After
 
