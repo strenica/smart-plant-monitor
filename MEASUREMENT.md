@@ -51,15 +51,18 @@ the step most likely to surprise you.
 
 ---
 
-## 1. The measurement matrix
+## 1. What to measure, per variant
 
-Thirteen runs, roughly five minutes each including setup. If you are short on
-time, the **bold** ones are the core comparison and the rest are extras.
+Each variant needs three numbers: what the ESP32 draws, what the Pi draws, and
+what the pair draws together. The runs are grouped by variant so you can do one
+rung end to end and write it down before moving to the next.
 
-### ESP32 alone — `--voltage 3.3`
+**Flash the variant first.** `./install.sh <variant>` puts the right firmware on
+the ESP32 and the right script on the Pi. The ESP32 keeps its firmware when you
+unplug it, so flash, then disconnect, then measure.
 
-Disconnect the ESP32 from the Pi first: unplug VIN from pin 4 **and** the USB
-cable. It must be powered only by the HVPM.
+**Before any E run:** unplug VIN from Pi pin 4 **and** the USB cable. The ESP32
+must be powered only by the HVPM.
 
 **The CP2102 USB bridge never sleeps.** It draws about 10 mA whenever it has
 5 V, which is roughly a hundred times the ESP32's deep-sleep current. Powered
@@ -68,47 +71,77 @@ chip. Leave USB connected and E4 measures the bridge instead. Check which one
 you did before writing the number down — this is the single easiest way to make
 V3 look like it saved nothing.
 
-| # | Run | Duration | What it tells you |
-|---|---|---|---|
-| **E1** | ESP32 idle, no sensors read | 60 s | The floor. Everything else is measured against this. |
-| **E2** | V0 behaviour: sensors every 2 s | 60 s | Cost of aggressive sampling |
-| **E3** | V1 behaviour: sensors every 60 s | 60 s | Cost of duty cycling |
-| **E4** | V3 behaviour: deep sleep, 60 s wake | 180 s | The headline number. Needs several wake cycles to average. |
-| E5 | Buzzer firing continuously | 30 s | Cost of one notification |
+**Before any P run:** the Pi must be powered only by the HVPM. Nothing on its
+USB ports, and nothing on the 5 V rail either.
 
-E4 needs a long capture because the ESP32 is asleep for most of it. A 60 s
-window might catch only one wake and the average will be dominated by the
-transient. Three minutes gives you three cycles.
+### V0 baseline
 
-### Pi alone — `--voltage 5`
+| # | Run | HVPM voltage | Duration | Gives you |
+|---|---|---|---|---|
+| **E2** | ESP32 alone, V0 firmware, sensors every 2 s | 3.3 | 60 s | the ESP32's share |
+| **P3** | Pi alone, `v0_baseline` running | 5 | 120 s | the Pi's share |
+| S1 | both, ESP32 on the Pi's 5 V rail | 5 | 120 s | system total, and the cross-check |
 
-The Pi must be powered only by the HVPM. Nothing else on its USB ports, and
-nothing on the 5 V rail either — unplug the ESP32's VIN from pin 4.
+S1 should land close to E2 + P3. If it does not, the per-component method is
+wrong and every later number inherits the error.
 
-| # | Run | Duration | What it tells you |
-|---|---|---|---|
-| **P1** | Pi halted (`sudo poweroff`, then measure) | 60 s | The V3 idle floor — what "off" actually costs |
-| **P2** | Pi booted, no services running | 60 s | Idle floor with the OS up |
-| **P3** | `v0_baseline` running | 120 s | Continuous polling |
-| **P4** | `v1_duty` running | 120 s | Fixed duty cycle |
-| **P5** | `v2_adaptive` running | 120 s | Adaptive sampling |
-| P6 | Boot from power-on | 60 s | Inrush — start the capture, then apply power |
-| P7 | Camera streaming, nothing else | 60 s | Camera contribution |
+### V1 fixed duty cycle
 
-P1 is the one people forget and it is the most interesting: a halted Pi 4 still
-draws current because the 5 V rail stays up (`POWER_OFF_ON_HALT=0`). That number
-is the whole justification for V3's design, so measure it properly.
+| # | Run | HVPM voltage | Duration | Gives you |
+|---|---|---|---|---|
+| **E3** | ESP32 alone, V1 firmware, sensors every 60 s | 3.3 | 60 s | the ESP32's share |
+| **P4** | Pi alone, `v1_duty` running | 5 | 120 s | the Pi's share |
 
-P7 minus P2 is the camera's share. No extra hardware needed.
+E3 - E2 is what the 30x slower sampling bought. P4 - P3 is the camera duty
+cycle plus the slower polling.
 
-### System total — `--voltage 5`
+### V2 adaptive sampling
 
-| # | Run | Duration | What it tells you |
-|---|---|---|---|
-| S1 | Pi with the ESP32 on its 5 V rail (pin 4) | 120 s | Cross-check: should be close to P4 + E3 |
+| # | Run | HVPM voltage | Duration | Gives you |
+|---|---|---|---|---|
+| **E6** | ESP32 alone, V2 firmware, adaptive, awake | 3.3 | 180 s | the ESP32's share |
+| **P5** | Pi alone, `v2_adaptive` running | 5 | 120 s | the Pi's share |
 
-If S1 does not roughly equal the sum of its parts, something in your per-component
-methodology is wrong and you need to know that before you present it.
+E6 - E3 is what adaptive sampling bought on the ESP32. This is the run that
+separates "adaptive" from "deep sleep"; without it, E3 to E4 bundles both and
+you cannot say which did the work.
+
+### V3 deep sleep
+
+| # | Run | HVPM voltage | Duration | Gives you |
+|---|---|---|---|---|
+| **E4** | ESP32 alone, V3 firmware, deep sleep | 3.3 | 180 s | the ESP32's share |
+| **P1** | Pi alone, halted | 5 | 60 s | what "off" actually costs |
+| **S4** | both, V3 running | 5 | 600 s | the headline number |
+
+E4 - E6 is what deep sleep bought. P1 is the number the whole design rests on: a
+halted Pi 4 still draws current because the 5 V rail stays up
+(`POWER_OFF_ON_HALT=0`). Measure it properly.
+
+S4 needs ten minutes because the Pi is off for most of it and the ESP32 wakes
+every 60 s. A short capture catches one event and reports the transient as if it
+were the average.
+
+### Not per-variant
+
+| # | Run | HVPM voltage | Duration | Gives you |
+|---|---|---|---|---|
+| E1 | ESP32 idle, no sensors read | 3.3 | 60 s | the floor everything is measured against |
+| E5 | buzzer firing continuously | 3.3 | 30 s | cost of one notification |
+| P2 | Pi booted, no services | 5 | 60 s | the OS floor |
+| P6 | Pi boot from power-on | 5 | 60 s | inrush |
+| P7 | camera streaming, nothing else | 5 | 60 s | the camera's share (P7 - P2) |
+
+### If you only have time for eleven runs
+
+**E1, E2, E3, E6, E4, P1, P2, P3, P4, P5, S4.**
+
+That is the full ESP32 ladder, the full Pi ladder, and the V3 headline number.
+E1 and P2 are not optional: the email asks for idle consumption explicitly, and
+without a floor you cannot say what sensing costs above it.
+
+The other four (E5, P6, P7, S1) make the discussion richer, not the comparison
+possible.
 
 ---
 
