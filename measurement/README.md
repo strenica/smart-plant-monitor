@@ -177,10 +177,21 @@ line.
 ## After
 
 ```bash
-python3 measurement/summarise.py
+python3 measurement/summarise_csv.py              # whole capture
+python3 measurement/summarise_csv.py --from 120   # skip the first 120 s
 ```
 
-Prints mean current, run-to-run spread, average power and Wh/day per variant.
+Prints mean current, run-to-run spread, average power and Wh/day per capture,
+grouped by the folder it sits in.
+
+`summarise.py` is the older path: it reads the JSON summaries that
+`hvpm capture --json` writes. The captures actually taken were exported as CSV,
+so `summarise_csv.py` is the one that works on them.
+
+`--from 120` matters for V3. Those captures start with the Pi still running and
+booting, so the whole-file mean is not the idle figure.
+
+The measured numbers are written up in `RESULTS.md`.
 
 ## What the numbers cannot say
 
