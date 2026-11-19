@@ -1,0 +1,25 @@
+# Measurement config for v3_deepsleep.
+#
+# Copy this over config/configuration.txt before the run:
+#     cp measurement/configs/v3_event.txt config/configuration.txt
+#
+# The timing values below match the defaults compiled into
+# variants/v3_deepsleep/variant.h, so the UART push is a no-op and the variant
+# behaves exactly as designed. They are written out rather than left commented
+# so a stale value from an earlier run cannot survive in the ESP32's RTC memory.
+#
+# Rule 1 fires on the first sample, because the room is above 40% humidity.
+# That wakes the Pi exactly once per run, which is what this measures: the
+# cost of one event, from wake pulse to halt.
+
+1: air_humidity > 40
+2: air_temperature < 0
+3: soil_humidity < 0
+
+# Timing, in seconds. Same as v3_deepsleep.txt.
+sample_interval = 60
+image_interval = 300
+heartbeat = 3600
+adaptive_fast = 60
+adaptive_slow = 600
+log_max_lines = 50000
