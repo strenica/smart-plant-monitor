@@ -9,15 +9,18 @@
 // square wave, and it is loudest at its 2300 Hz resonant frequency. LEDC gives
 // us that in hardware, so the CPU does not have to toggle the pin.
 //
-// 10-bit resolution at 2300 Hz is well within the LEDC divider range, and 50%
-// duty is the loudest square wave.
+// 10-bit resolution at 2300 Hz is well within the LEDC divider range. The duty
+// sets the volume: 50% is the loudest square wave and is far too loud for a
+// desk, so BUZZER_DUTY_PCT in config.h scales it down.
 
 #define BUZZER_MODE     LEDC_LOW_SPEED_MODE
 #define BUZZER_TIMER    LEDC_TIMER_0
 #define BUZZER_CHANNEL  LEDC_CHANNEL_0
 #define BUZZER_RES      LEDC_TIMER_10_BIT
 #define BUZZER_FREQ_HZ  2300
-#define BUZZER_DUTY_ON  512   // 50% of 1024
+
+#define BUZZER_DUTY_MAX 1024   // 10-bit
+#define BUZZER_DUTY_ON  ((BUZZER_DUTY_MAX * BUZZER_DUTY_PCT) / 100)
 
 #define BEEP_ON_MS   150
 #define BEEP_GAP_MS  150

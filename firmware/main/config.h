@@ -56,6 +56,14 @@
 #define SOIL_ADC_DRY    0     // raw ADC in air -> maps to 0
 #define SOIL_ADC_WET    2300  // raw ADC in water -> maps to 1000
 
+// Buzzer loudness, as a percentage of full duty.
+//
+// A piezo is loudest at 50% duty, which is far too loud for a desk. The
+// fundamental of the square wave scales with sin(pi * duty), so 10% is about
+// 10 dB quieter than 50% and still clearly audible at arm's length. Raise it
+// for a demo in a big room, lower it for a shared one.
+#define BUZZER_DUTY_PCT 10
+
 // DHT11 needs about a second between reads and cannot be sampled faster.
 #define DHT_MIN_INTERVAL_MS 2000
 
