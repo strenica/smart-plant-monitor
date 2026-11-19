@@ -254,7 +254,7 @@ image_interval = 300
 heartbeat = 3600
 adaptive_fast = 10
 adaptive_slow = 600
-log_max_lines = 50000
+log_max_lines = 0
 ```
 
 The rule number is the buzz count: rule 2 buzzes twice. A rule buzzes when it
@@ -284,11 +284,11 @@ when the Pi starts, but only while the ESP32 is awake — in V3 that means setup
 mode, or the next wake. `adaptive_fast` and `adaptive_slow` are only used by V2
 and V3, `image_interval` only by V1, and `heartbeat` only by V2.
 
-`log_max_lines` caps `logs/events_log.txt`. The file is trimmed to the newest
-N lines when a run opens it, and again whenever it grows to twice that, so it
-never sits far above the limit. `0` keeps everything. At V1's rate (three
-sensor lines a minute) 50000 lines is about eleven days; the dashboard only
-shows the newest 25.
+`log_max_lines` caps `logs/events_log.txt`. **It is 0 here, which means the
+log is never trimmed** — the file is the evidence for the report, so nothing
+is thrown away. Set it to a number if you ever need to bound the file: it is
+then trimmed to the newest N lines when a run opens it, and again whenever it
+grows to twice that. The dashboard only shows the newest 25 either way.
 
 ## Vision
 

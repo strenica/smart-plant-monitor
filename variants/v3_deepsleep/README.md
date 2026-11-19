@@ -121,7 +121,7 @@ Set the intervals in `config/configuration.txt`.
 sample_interval = 60     # ESP32 base interval
 adaptive_fast = 60       # while the readings are moving
 adaptive_slow = 600      # after three quiet samples
-log_max_lines = 50000    # trim logs/events_log.txt to this many lines, 0 = keep all
+log_max_lines = 0        # 0 = never trim logs/events_log.txt
 ```
 
 The Pi pushes these over UART2 whenever it is awake, and the ESP32 keeps them in

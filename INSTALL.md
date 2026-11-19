@@ -291,8 +291,9 @@ outlined in red and each verdict written on. The annotated one is what lets you
 tell a real problem from the model having picked the wrong region.
 
 Recent events are listed newest first. How much history is kept is set by
-`log_max_lines` in `configuration.txt` (default 50000, `0` keeps everything);
-the file is trimmed when a run opens it and again whenever it doubles.
+`log_max_lines` in `configuration.txt`. It ships as `0`, which means the log
+is never trimmed; set a number to bound it, and the file is then trimmed when
+a run opens it and again whenever it doubles.
 
 Saving restarts `plant-monitor` so the new settings take effect immediately —
 the variant loops read the config once at startup. The restart is skipped while

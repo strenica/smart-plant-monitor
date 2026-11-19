@@ -25,4 +25,4 @@ sample_interval = 10
 adaptive_fast = 10
 adaptive_slow = 600
 heartbeat = 3600
-log_max_lines = 50000
+log_max_lines = 0
