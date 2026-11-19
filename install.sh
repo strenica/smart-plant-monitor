@@ -47,9 +47,15 @@ VARIANTS=(v0_baseline v1_duty v2_adaptive v3_deepsleep)
 # as a last resort. PI_DIR keeps its literal ~ in the variable, so expand it.
 PI_DIR_ABS="${PI_DIR/#\~/$HOME}"
 
+# Which python has esptool. The ESP-IDF environment comes before the stale
+# ~/plant venv on purpose: that one carries esptool 5.x, whose post-write MD5
+# check fails on this board with a UnicodeDecodeError, leaving the app
+# unwritten. IDF ships 4.13.0, which is the version the build itself uses.
 find_esptool_python() {
   local candidate
-  for candidate in "$ROOT/.venv/bin/python" "$PI_DIR_ABS/.venv/bin/python"; do
+  for candidate in "$ROOT/.venv/bin/python" \
+                   "$HOME"/.espressif/python_env/*/bin/python \
+                   "$PI_DIR_ABS/.venv/bin/python"; do
     if [ -x "$candidate" ] && "$candidate" -c 'import esptool' 2>/dev/null; then
       printf '%s\n' "$candidate"
       return 0
@@ -60,6 +66,18 @@ find_esptool_python() {
     return 0
   fi
   return 1
+}
+
+# esptool 5 renamed write_flash to write-flash. Ask the selected esptool which
+# spelling it understands rather than guessing.
+esptool_write_subcommand() {
+  local py="$1" major
+  major=$("$py" -c 'import esptool; print(esptool.__version__.split(".")[0])' 2>/dev/null || echo 4)
+  if [ "$major" -ge 5 ] 2>/dev/null; then
+    printf 'write-flash\n'
+  else
+    printf 'write_flash\n'
+  fi
 }
 
 # The rules live in config/configuration.txt, which is the file the spec names.
@@ -240,8 +258,10 @@ if [ "$PI_ONLY" -eq 0 ]; then
       "$ROOT/.venv/bin/pip" install -q -r "$ROOT/requirements.txt"
       PY="$ROOT/.venv/bin/python"
     }
+    WRITE_CMD="$(esptool_write_subcommand "$PY")"
+    echo "== esptool: $PY ($WRITE_CMD)"
     "$PY" -m esptool \
-        --port /dev/ttyUSB0 --baud "$BAUD" --no-stub write-flash \
+        --port /dev/ttyUSB0 --baud "$BAUD" --no-stub "$WRITE_CMD" \
         --flash-mode dio --flash-size 4MB --flash-freq 40m \
         0x1000 "$BUILD/bootloader/bootloader.bin" \
         0x8000 "$BUILD/partition_table/partition-table.bin" \
