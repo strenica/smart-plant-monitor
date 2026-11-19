@@ -68,15 +68,18 @@ find_esptool_python() {
   return 1
 }
 
-# esptool 5 renamed write_flash to write-flash. Ask the selected esptool which
-# spelling it understands rather than guessing.
-esptool_write_subcommand() {
+# esptool 5 renamed write_flash to write-flash and the --flash_mode family to
+# --flash-mode. Ask the selected esptool which spelling it understands rather
+# than guessing. Getting this wrong is quiet: 4.x swallows the hyphenated flags
+# and reports "Address 'dio' must be a number", which points at the addresses
+# rather than at the flags.
+esptool_flash_args() {
   local py="$1" major
   major=$("$py" -c 'import esptool; print(esptool.__version__.split(".")[0])' 2>/dev/null || echo 4)
   if [ "$major" -ge 5 ] 2>/dev/null; then
-    printf 'write-flash\n'
+    printf '%s\n' "write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m"
   else
-    printf 'write_flash\n'
+    printf '%s\n' "write_flash --flash_mode dio --flash_size 4MB --flash_freq 40m"
   fi
 }
 
@@ -258,11 +261,10 @@ if [ "$PI_ONLY" -eq 0 ]; then
       "$ROOT/.venv/bin/pip" install -q -r "$ROOT/requirements.txt"
       PY="$ROOT/.venv/bin/python"
     }
-    WRITE_CMD="$(esptool_write_subcommand "$PY")"
-    echo "== esptool: $PY ($WRITE_CMD)"
+    read -ra FLASH_ARGS <<< "$(esptool_flash_args "$PY")"
+    echo "== esptool: $PY (${FLASH_ARGS[0]})"
     "$PY" -m esptool \
-        --port /dev/ttyUSB0 --baud "$BAUD" --no-stub "$WRITE_CMD" \
-        --flash-mode dio --flash-size 4MB --flash-freq 40m \
+        --port /dev/ttyUSB0 --baud "$BAUD" --no-stub "${FLASH_ARGS[@]}" \
         0x1000 "$BUILD/bootloader/bootloader.bin" \
         0x8000 "$BUILD/partition_table/partition-table.bin" \
         0x10000 "$BUILD/plant_monitor.bin"
