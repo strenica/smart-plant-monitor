@@ -199,16 +199,24 @@ The rule number is the buzz count: rule 2 buzzes twice. A rule buzzes when it
 *enters* violation, then re-alerts once per cooldown (30 min by default) while
 it stays violated. Clearing a condition is silent.
 
+**Where the rules are read depends on the variant.** V0 and V1 evaluate them on
+the Pi and read this file at runtime. V2 and V3 evaluate them on the ESP32,
+which cannot read the Pi's disk while the Pi is powered off, so `install.sh`
+bakes these lines into the firmware. Changing a rule for V2 or V3 therefore
+needs `./install.sh <variant>`, not just a service restart. Pushing them over
+UART instead was tried and does not work: the ESP32 is asleep almost all the
+time in V3, and the push is best-effort with no retry.
+
 The `key = value` lines set the intervals, in seconds. They are optional: a
 missing key falls back to the variant's compiled default, so a file with only
 rules still runs. An unknown key is an error rather than a silent no-op, because
 a typo that quietly leaves the old interval in place is worse than a crash.
 
-`sample_interval` is pushed to the ESP32 over UART2 when the Pi starts, so
-changing it does not need a reflash. The ESP32 keeps it in RTC memory, which
-survives deep sleep but not a power cycle. `adaptive_fast` and `adaptive_slow`
-are only used by V2 and V3, `image_interval` only by V1, and `heartbeat` only by
-V2.
+`sample_interval` and the adaptive bounds are pushed to the ESP32 over UART2
+when the Pi starts, but only while the ESP32 is awake — in V3 that means setup
+mode, so in normal operation the compiled-in values apply. `adaptive_fast` and
+`adaptive_slow` are only used by V2 and V3, `image_interval` only by V1, and
+`heartbeat` only by V2.
 
 `log_max_lines` caps `logs/events_log.txt`. The file is trimmed to the newest
 N lines when a run opens it, and again whenever it grows to twice that, so it

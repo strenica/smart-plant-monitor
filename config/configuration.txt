@@ -6,6 +6,11 @@
 # Fields:    air_humidity (%), air_temperature (C), soil_humidity (0-1000)
 # Operators: <  >  <=  >=
 #
+# V0 and V1 read this file at runtime, on the Pi. V2 and V3 evaluate the rules
+# on the ESP32, which cannot read the Pi's disk while the Pi is powered off, so
+# install.sh bakes these lines into the firmware. Changing a rule for V2 or V3
+# therefore needs ./install.sh <variant>, not just a service restart.
+#
 # These thresholds are placeholders. Calibrate them for your species and your
 # probe: run tools/live.py --csv, note the raw adc in dry soil and again in a
 # glass of water, then set SOIL_ADC_DRY and SOIL_ADC_WET in
@@ -26,9 +31,10 @@
 #   adaptive_slow     interval after three quiet samples (V2, V3)
 #   log_max_lines     trim events_log.txt to this many lines (0 = keep all)
 #
-# The Pi sends sample_interval to the ESP32 over UART2 at startup, so changing
-# it here does not need a reflash. The ESP32 keeps it in RTC memory, which
-# survives deep sleep but not a power cycle.
+# The Pi pushes sample_interval and the adaptive bounds over UART2, but only
+# while the ESP32 is awake. In V3 that means setup mode, so in normal operation
+# the values compiled into the variant apply. Treat this section as
+# authoritative for V0-V2 and as a starting point for V3.
 # ---------------------------------------------------------------------------
 
 sample_interval = 60
