@@ -53,11 +53,14 @@ static RTC_DATA_ATTR bool s_setup_mode = false;
 static RTC_DATA_ATTR uint32_t s_fast_ms = 0;
 static RTC_DATA_ATTR uint32_t s_slow_ms = 0;
 
-// Measurement mode: wake the Pi on every sample instead of only when a rule
-// fires, so one capture holds several wake cycles rather than one. Set from
-// configuration.txt over UART; RTC memory keeps it across deep sleep, and a
-// power cycle clears it, which is why the Pi pushes it again in setup mode.
-static RTC_DATA_ATTR bool s_wake_every = false;
+// Measurement mode: wake the Pi every N samples instead of only when a rule
+// fires, so one capture shows the whole cycle — sample alone, sample and wake
+// the Pi, Pi logs the backlog and halts, repeat. 0 means rules only, which is
+// the deployed behaviour. Set from configuration.txt over UART; RTC memory
+// keeps it across deep sleep, and a power cycle clears it, which is why the Pi
+// pushes it again in setup mode.
+static RTC_DATA_ATTR uint32_t s_wake_every_n = 0;
+static RTC_DATA_ATTR uint32_t s_samples_since_wake = 0;
 
 // Set when the Pi says it has everything it needs, so the handover wait can end
 // early instead of running to its timeout.
@@ -174,7 +177,7 @@ static void wait_for_pi(void)
 static void handle_command(const char *cmd)
 {
     int n = 0;
-    unsigned long ms = 0, fast = 0, slow = 0;
+    unsigned long ms = 0, fast = 0, slow = 0, wake = 0;
 
 #if DEEP_SLEEP_BETWEEN_SAMPLES
     if (strncmp(cmd, "log?", 4) == 0) {
@@ -236,9 +239,10 @@ static void handle_command(const char *cmd)
         s_fast_ms = (uint32_t)fast;
         s_slow_ms = (uint32_t)slow;
         ESP_LOGI(TAG, "adaptive bounds now %lu..%lu ms", fast, slow);
-    } else if (sscanf(cmd, "set wake %d", &n) == 1) {
-        s_wake_every = n != 0;
-        ESP_LOGI(TAG, "wake the Pi every sample: %s", s_wake_every ? "yes" : "no");
+    } else if (sscanf(cmd, "set wake %lu", &wake) == 1) {
+        s_wake_every_n = (uint32_t)wake;
+        s_samples_since_wake = 0;
+        ESP_LOGI(TAG, "wake the Pi every %lu samples (0 = rules only)", wake);
     }
 }
 
@@ -363,9 +367,14 @@ void app_main(void)
 #endif
 
 #if DEEP_SLEEP_BETWEEN_SAMPLES
-        // The Pi is off. Only wake it when something is worth reporting, or on
-        // every sample when the run is measuring the cost of a wake.
-        if (nf > 0 || s_wake_every) {
+        // The Pi is off. Wake it when a rule fires, or every N samples when the
+        // run is measuring the cycle rather than the deployed behaviour.
+        bool due = false;
+        if (s_wake_every_n > 0 && ++s_samples_since_wake >= s_wake_every_n) {
+            due = true;
+        }
+        if (nf > 0 || due) {
+            s_samples_since_wake = 0;
             pi_link_wake();
             wait_for_pi();
         }

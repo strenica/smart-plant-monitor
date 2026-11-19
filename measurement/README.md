@@ -140,27 +140,39 @@ the trace has exactly one wake in it.
 
 ## The loop run
 
-`v3_trigger` needs a hand on the probe to produce even one wake. `v3_loop` wakes
-the Pi on **every** sample instead, so a single capture holds two or three
-complete cycles and the cost of a wake can be read off a periodic trace and
-divided by the number of cycles. It also runs unattended, which makes it the
-better one to demo.
+`v3_trigger` needs a hand on the probe to produce even one wake. `v3_loop` runs
+the whole cycle by itself, repeatedly:
+
+```
+ESP32 asleep, Pi off
+ESP32 wakes, samples, sleeps          <- the Pi never sees this one
+ESP32 wakes, samples, pulses the Pi
+Pi boots, pulls the backlog, photographs, halts
+repeat
+```
 
 ```bash
 ./measurement/run.sh v3_loop
 ```
 
-`wake_every_sample = 1` in the config is what does it: the ESP32 pulses the Pi
-after every sample regardless of the rules. The rules in that config are quiet,
-so every wake in the trace comes from the flag and nothing else, and the buzzer
-stays silent for the same reason.
+`wake_every_n_samples = 2` is what produces that: the ESP32 pulses the Pi on
+every second sample regardless of the rules. `0` is the deployed behaviour,
+where only a rule fires a wake. The rules in that config are quiet, so every
+wake in the trace comes from the counter and nothing else, and the buzzer stays
+silent for the same reason.
+
+`sample_interval` is 20 s there, not the deployed 60 s, so a 180 s capture holds
+two or three cycles instead of one. That makes the energy per hour **not** the
+deployed figure — it is the idle cost plus a wake every 40 s. Divide the event
+part by the number of wakes to get the cost of one, then compose for the real
+interval.
 
 `adaptive_slow` is pinned to `adaptive_fast` on purpose. Left at 600 s the
-interval would stretch after three quiet samples and the loop would stop.
+interval would stretch after three quiet samples and the cycle would stop.
 
 The Pi is up for roughly 35 s of each cycle — boot, handover, photo, halt — and
 off for the rest, so the trace shows a clear on/off pattern rather than a flat
-line. At 60 s sampling that is two cycles in a 180 s capture.
+line.
 
 ## After
 

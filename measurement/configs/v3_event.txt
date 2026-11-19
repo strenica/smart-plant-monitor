@@ -28,5 +28,5 @@
 sample_interval = 60
 adaptive_fast = 60
 adaptive_slow = 600
-wake_every_sample = 0
+wake_every_n_samples = 0
 log_max_lines = 0
