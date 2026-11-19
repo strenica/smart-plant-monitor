@@ -1,12 +1,18 @@
 # Smart Plant Monitoring System — Build Plan
 
+> **This is the design record, written before implementation.** Several ideas
+> here were dropped or changed once they met the hardware. The code is the
+> authority, and [What changed during the build](#12-what-changed-during-the-build)
+> at the end lists every divergence. For what the system actually does, read the
+> [README](README.md).
+
 Four firmware variants of the same system, each adding one energy-saving technique,
 so the report can plot a measured energy/accuracy tradeoff instead of four unrelated
 programs.
 
 Hardware: ESP32 (sensor node) + Raspberry Pi 4 (vision + orchestration), DHT11,
-capacitive soil moisture sensor, Pi Camera (CSI ribbon), buzzer, Monsoon HVPM for
-energy measurement.
+DFRobot SEN0114 **resistive** soil moisture probe, Pi Camera Module 3 (CSI
+ribbon), Grove passive buzzer, Monsoon HVPM for energy measurement.
 
 ---
 
@@ -59,13 +65,28 @@ roughly **18–20× less than V0**. The HVPM will replace this estimate with a c
 
 ## 3. The four variants
 
+The only firmware difference between two variants is `variants/<name>/variant.h`.
+Everything else is shared, so the diff between two rungs is a dozen lines and the
+comparison stays honest.
+
+| | V0 baseline | V1 fixed duty | V2 adaptive | V3 deep sleep |
+|---|---|---|---|---|
+| ESP32 sample interval | 2 s | 60 s | 10 s → 10 min | 60 s → 10 min |
+| Adaptive | no | no | yes | yes |
+| ESP32 between samples | awake | awake | awake | **deep sleep** |
+| Rules evaluated on | Pi | Pi | **ESP32** | **ESP32** |
+| Buzzer driven by | Pi | Pi | **ESP32** | **ESP32** |
+| Pi | always on | always on | always on | **halted between events** |
+| Pi wakes on | — | — | — | ESP32 pulse on D25 |
+| Camera | never | every 5 min | on event + 1 h heartbeat | one shot per wake |
+| Readings reach the log | live stream | live stream | live stream | RTC buffer, pulled on wake |
+
 ### V0 — Baseline (naive)
 
-- Pi always awake, polls ESP32 over USB serial every 2 s
-- Pi evaluates `configuration.txt` rules, drives buzzer via serial command
-- Pi captures image every 30 s, runs CV on every frame (float model)
-- Pi writes `events_log.txt`
-- ESP32 is a dumb sensor bridge: read DHT11 + soil, print CSV, listen for buzz commands
+- Pi always awake, reads the ESP32 over UART2 every 2 s
+- Pi evaluates `configuration.txt` and drives the buzzer over UART
+- No camera at all
+- ESP32 is a sensor bridge: read DHT11 + soil, print one line, listen for commands
 - No sleep anywhere
 
 Purpose: reference point. Worst-case energy, best-case latency.
@@ -73,40 +94,34 @@ Purpose: reference point. Worst-case energy, best-case latency.
 ### V1 — Fixed duty cycle
 
 - Same split as V0
-- ESP32 samples every 60 s, light sleeps between reads
-- Pi captures every 5 min
-- Still fixed intervals, no adaptivity
+- ESP32 samples every 60 s and stays awake between reads (`vTaskDelay`)
+- Pi takes a picture every 5 min
+- Fixed intervals, no adaptivity
 
-Purpose: isolates the cost of the naive sampling rate. Shows how much of V0's energy
-is pure waste.
+Purpose: isolates the cost of the naive sampling rate. Shows how much of V0's
+energy is pure waste.
 
 ### V2 — Adaptive sampling + rules on the ESP32
 
-- `configuration.txt` moves to ESP32 LittleFS; ESP32 evaluates rules and buzzes
-  autonomously
-- Sampling interval scales with observed variance: stable → back off to 10 min,
-  changing → back to 10 s
-- Pi sleeps between events, wakes on serial interrupt or heartbeat
-- Pi captures only when env delta exceeds a threshold, plus a slow heartbeat
-- CV model quantized to int8
+- The ESP32 evaluates the rules and buzzes on its own; the Pi is out of the
+  decision loop
+- Interval backs off to 10 min after three quiet samples, returns to 10 s when
+  soil moves >= 20 raw or temperature >= 1.0 C
+- Pi stays awake, logs readings, photographs on an event plus a 1 h heartbeat
+- Rules reach the ESP32 over UART2 and live in RTC memory
 
 Purpose: the "smart" version. Most of the energy win, most of the interesting design.
 
-### V3 — Fully optimized
+### V3 — Deep sleep
 
-- ESP32 deep sleep; the ULP coprocessor watches the soil ADC and wakes the main
-  CPU only on a threshold crossing, with a slow timer wake as a heartbeat
-- Radio off
-- Pi **halted** between checks, woken by a 250 ms low pulse on its GPIO3 — the
-  course lab's approach, not a switch on the 5 V rail. Simpler and safer, but a
-  halted Pi still draws ~0.5–1 W, so this is a partial win rather than 0 W.
-- Camera closed in software between captures (see §5 — a CSI ribbon cannot be cleanly
-  power-gated without cutting the 3.3 V line)
-- Cheap colour-profile prefilter on the Pi; run the model only if the prefilter is suspicious
+- ESP32 deep sleeps between samples; the main CPU wakes on a timer
+- Rules and the last 96 readings live in RTC memory
+- Pi **halted** between events, woken by a 250 ms low pulse on GPIO3
+- One photograph per wake, then halt
 - Buzzer edge-triggered only
 
-Purpose: headline number. Costs boot latency (~20–30 s per Pi wake), which the report
-must argue is acceptable for a plant monitor.
+Purpose: headline number. Costs boot latency (~20-30 s per Pi wake), which the
+report must argue is acceptable for a plant monitor.
 
 ---
 
@@ -169,10 +184,13 @@ it explicitly, or use a bare module / a board with a native-USB ESP32-S3. **The 
 will show this immediately** — it is exactly the kind of thing a multimeter average
 hides.
 
-**Time source.** The log format needs wall-clock time. ESP32 has no RTC battery.
-- V0/V1: Pi is the time source, sends time over serial at boot.
-- V2/V3: ESP32's internal RTC survives deep sleep, but **a full power cycle loses it**.
-  Needs NTP on wake, or the Pi to set it when it comes up.
+**Time source.** The log format needs wall-clock time, and the ESP32 has no RTC
+battery. The Pi stamps every line with its own clock, so the ESP32 never needs
+wall time at all: its `t=` field is a synthetic millisecond counter that survives
+deep sleep and exists only to drive the rule cooldown. The cost is that a V3
+backlog is stamped with the time the Pi collected it rather than the time it was
+measured, which is why the ESP32's own sample times go in the summary line above
+the measurements.
 
 **ESP32 power is solved by the Pi's halt behaviour.** `POWER_OFF_ON_HALT=0` on this
 Pi means the 5 V rail stays up when it halts, so the ESP32 keeps running and can
@@ -210,9 +228,9 @@ does not. Currently wired straight to 3V3, so it is always powered.
 ESP32's ADC limit and will damage the pin. 3.3 V keeps the output inside range,
 at the cost of the top of the scale saturating near 3.1 V.
 
-**Soil calibration is a guess right now.** `SOIL_ADC_DRY 1000` and
-`SOIL_ADC_WET 3800` are scaled from DFRobot's 10-bit figures. They need real
-measurement: `tools/live.py --csv`, probe in dry soil, then in a glass of water.
+**Soil calibration is a guess right now.** `SOIL_ADC_DRY 0` is the air reading,
+not a dry-soil reading, and `SOIL_ADC_WET 2300` is a glass of water. Both need a
+real pot measurement: `tools/live.py --csv`, probe in dry soil, then in water.
 
 **Buzzer on the ESP32, not the Pi.** Keeps the alert path alive when the Pi is off.
 
@@ -222,107 +240,67 @@ measurement: `tools/live.py --csv`, probe in dry soil, then in a glass of water.
 
 ```
 lowerEnergy/
-├── PLAN.md
-├── README.md
-├── firmware/                  # ESP-IDF project
+├── install.sh                 # build, flash and deploy one variant
+├── requirements.txt
+├── README.md  INSTALL.md  MEASUREMENT.md  PLAN.md
+├── variants/                  # one folder per rung
+│   ├── v0_baseline/           # variant.h, run.py, install.sh, README.md
+│   ├── v1_duty/
+│   ├── v2_adaptive/
+│   └── v3_deepsleep/
+├── firmware/                  # ESP-IDF project, shared by all four
 │   ├── CMakeLists.txt
 │   ├── sdkconfig.defaults
-│   ├── partitions.csv         # LittleFS partition for configuration.txt
 │   └── main/
 │       ├── CMakeLists.txt
-│       ├── Kconfig.projbuild  # variant selection via menuconfig
-│       ├── main.c             # app_main, dispatches on CONFIG_VARIANT_*
-│       ├── config.h           # pins, calibration
+│       ├── main.c             # the loop, branching on the variant knobs
+│       ├── config.h           # pins, calibration, PI_HANDOVER_MS
+│       ├── variant.h          # generated by install.sh from variants/<name>/
 │       ├── dht11.c/.h         # bit-bang one-wire driver
 │       ├── sensors.c/.h       # ADC + DHT, power gating
-│       ├── buzzer.c/.h        # edge-triggered, cooldown
-│       ├── rules.c/.h         # configuration.txt parser
-│       ├── logger.c/.h        # events_log.txt writer
-│       └── variants/          # v0.c v1.c v2.c v3.c
+│       ├── buzzer.c/.h        # LEDC PWM at 2300 Hz
+│       ├── pi_link.c/.h       # wake pulse + UART2
+│       ├── sample_log.c/.h    # 96-reading ring in RTC memory, V3 only
+│       └── rules.c/.h         # ESP32-side rule engine, V2 and V3
 ├── pi/
-│   ├── requirements.txt       # picamera2, opencv, pyserial, numpy
-│   ├── common/                # serial link, config, logger, camera
+│   ├── common/                # config, logger, camera, rules
 │   ├── v0_baseline.py
-│   ├── v1_dutycycle.py
+│   ├── v1_duty.py
 │   ├── v2_adaptive.py
-│   └── v3_optimized.py
+│   ├── v3_wake.py
+│   └── vision/                # U2-Net leaf pipeline + u2netp.onnx
 ├── config/
-│   └── configuration.txt
-├── logs/
-├── tools/
-│   ├── energy_bench.py        # drives hvpm capture around a scenario run
-│   └── scenario.py            # drives the test timeline
-└── report/
+│   ├── configuration.txt
+│   └── camera.json
+├── logs/                      # events_log.txt, last_capture.jpg, ...
+└── tools/
+    ├── supervisor.py          # asks the ESP32 which mode to run
+    ├── dashboard.py           # web UI on 8081
+    ├── preview.py             # camera preview on 8080
+    ├── live.py                # tail the UART link
+    ├── flash.sh  flash_pi.sh  idf_env.sh
+    └── nat.sh                 # laptop-side: gives the Pi internet
 ```
 
-`camera.py` wraps `picamera2` behind a small interface so the vision code does not
-care whether it is CSI or USB.
-
-Flash any variant: `idf.py menuconfig` → Plant Monitor → Energy variant, then
-`tools/flash.sh`.
-
-### Toolchain: ESP-IDF v5.5.6
-
-Chosen over Arduino because the course uses it, and because it is genuinely the
-better fit for this project:
-
-- **ULP coprocessor.** The ultra-low-power core can read the ADC and compare
-  against thresholds while the main CPU is in deep sleep. That is what lets V3
-  wake on a real threshold crossing instead of a timer. Arduino makes this
-  painful; ESP-IDF is where it lives.
-- **`esp_pm_configure()` with automatic light sleep** and `esp_pm_lock`
-  semantics — hold a lock during a sensor read, release it, let the system
-  sleep. Exactly the V2 mechanism.
-- **Tickless idle** (`CONFIG_FREERTOS_USE_TICKLESS_IDLE`) is what makes light
-  sleep actually save power rather than just look good on paper.
-- **ADC calibration** via the `adc_cali` API and eFuse, if we want millivolts
-  rather than raw counts.
-
-Costs, accepted: more boilerplate (CMake, components, Kconfig), and no official
-DHT11 driver — `dht11.c` is a bit-bang implementation we own.
-
-Install (no sudo needed; ESP-IDF fetches its own ninja and toolchain):
-
-```bash
-git clone -b v5.5.6 --depth 1 --shallow-submodules --recursive \
-    https://github.com/espressif/esp-idf.git ~/esp/esp-idf
-cd ~/esp/esp-idf
-./install.sh esp32
-. ./export.sh
-```
-
-**Python note:** this machine's system Python is 3.14, which is too new for
-ESP-IDF's installer. Use the 3.12 that `uv` already provides:
-
-```bash
-export PATH="$HOME/.local/share/uv/python/cpython-3.12-linux-x86_64-gnu/bin:$PATH"
-export IDF_PYTHON_ENV_PATH="$HOME/.espressif/python_env/idf5.5_py3.12_env"
-cd ~/esp/esp-idf && ./install.sh esp32
-```
-
-Every shell that builds needs both exports, then `. ~/esp/esp-idf/export.sh`.
-`tools/flash.sh` sources `export.sh` itself but still needs `IDF_PYTHON_ENV_PATH`
-set, so put both lines in your shell rc.
-
-**Verified on this machine:** ESP-IDF v5.5.6, target `esp32`, builds clean.
-`plant_monitor.bin` is 175 KB with 83% of the app partition free.
+There is no `report/` directory: the report is not part of this repository.
 
 ---
 
 ## 7. Milestones
 
-| Phase | Work | Done when |
-|---|---|---|
-| 0 | Bring-up: blink, serial, DHT11 read, soil read, buzzer beep | All five work from one sketch |
-| 0b | HVPM bring-up: `hvpm doctor`, `hvpm info`, one real capture | A CSV from real hardware, not `--simulate` |
-| 1 | V0 end-to-end | Rules fire, log matches spec format, image captured and classified |
-| 2 | V1 | Same behaviour, 60 s / 5 min, measured energy drop vs V0 |
-| 3 | V2 | ESP32 autonomous, Pi wakes on event, adaptive interval demonstrably backs off |
-| 4 | V3 | Pi power-gated, deep sleep, measured headline number |
-| 5 | Measurement + report | Energy/accuracy table across all four, test scenario documented |
+| Phase | Work | Done when | Status |
+|---|---|---|---|
+| 0 | Bring-up: serial, DHT11, soil, buzzer, Pi wake pulse | All of it works from one build | **done** |
+| 0b | HVPM bring-up: `hvpm doctor`, `hvpm info`, one real capture | A CSV from real hardware, not `--simulate` | **not started** |
+| 1 | V0 end-to-end | Rules fire, log matches the spec format | **done** |
+| 2 | V1 | Same behaviour at 60 s / 5 min | **done** |
+| 3 | V2 | ESP32 autonomous, adaptive interval demonstrably backs off | built, **never run on hardware** |
+| 4 | V3 | Pi halted, ESP32 deep sleeping, full cycle | **done** |
+| 5 | Measurement + report | Energy table across all four, test scenario documented | **not started** |
 
-Phase 0 and 0b first. Nothing else is meaningful until the sensors read correctly and
-the meter produces a trustworthy CSV.
+Phase 0b is the one blocking everything else: without a trustworthy CSV there are
+no numbers, and without numbers the ladder is four programs rather than an
+evaluation.
 
 ---
 
@@ -398,9 +376,10 @@ This is the spec's "show different plant images to the camera" test, made repeat
 `hvpm capture` running throughout. Report Wh per variant, per component, using the
 three-run methodology in §8.
 
-`tools/scenario.py` drives A–C on a timeline so runs are reproducible;
-`tools/energy_bench.py` wraps `hvpm capture` around each run and tags the CSV with
-the variant and scenario phase.
+A–C are run by hand and the results written down as they go. There is no
+`scenario.py` or `energy_bench.py`: the timeline is short enough to drive
+manually, and a script that half-automates it would be more to trust than to
+write. D follows the run list in `MEASUREMENT.md`.
 
 ---
 
@@ -520,5 +499,25 @@ build fails on missing headers.
 
 - Plant species in the greenhouse kit — needed to set real thresholds in
   `configuration.txt` (optimal temp/humidity, visual distress signals per species).
-- What is `xx5r69`?
 - Does the HVPM backend actually work against your unit? Phase 0b answers this.
+- What does a halted Pi 4 actually draw? P1 in `MEASUREMENT.md` answers it, and
+  the V3 headline number depends on it.
+
+---
+
+## 12. What changed during the build
+
+Written after the fact, so the plan above is not mistaken for a description of
+the code.
+
+| Planned | Built instead | Why |
+|---|---|---|
+| ULP coprocessor watches the soil ADC in V3 | Main CPU wakes on a timer | The ULP needs its own toolchain and build step. A timer wake is enough for a plant, where nothing happens on a second timescale. |
+| `configuration.txt` on ESP32 LittleFS | Rules pushed over UART2 into RTC memory | LittleFS would need the file on the ESP32's flash plus a way to update it. The UART push reuses the link that was already there and needs no filesystem. |
+| V1 light sleeps between reads | `vTaskDelay`, stays awake | The ESP32 cannot wake from light sleep on UART2, only UART0/UART1, and UART1's wake pin is GPIO9, which is the SPI flash. Dead end. |
+| V0 photographs every 30 s | V0 never uses the camera | The camera is the most expensive peripheral. Leaving it out makes V0 a clean sensor-only floor, and the camera's share is measured separately (P7 - P2). |
+| int8 quantised CV model | Float `u2netp.onnx` | Quantising cost more time than it saved, and in V3 the Pi is halted anyway, so the model's runtime barely moves the total. |
+| Pi sleeps between events in V2 | Pi stays awake | V2's job is to isolate adaptive sampling. Sleeping the Pi there would have made V2 and V3 the same experiment. |
+| `tools/scenario.py`, `tools/energy_bench.py` | Not written | The scenario is run by hand; the procedure is in `MEASUREMENT.md`. |
+| Radio off in V3 | Nothing to turn off | No variant uses the radio, so there was never a radio cost to remove. |
+| A halted Pi draws ~0.5-1 W | Unmeasured | That was a guess. P1 in `MEASUREMENT.md` is the run that answers it, and it has not been run yet. |
