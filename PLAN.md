@@ -406,20 +406,27 @@ Recorded because each of these cost time to discover.
 
 - Hotspot `wlp0s20f3` = 10.42.0.1/24, NetworkManager connection `LRK5`,
   `ipv4.method=shared`
-- Uplink `enxa6c337b9f279` = 172.20.10.3/28 (phone USB tethering)
+- Uplink is whatever owns the default route. It has been `enxa6c337b9f279`
+  (phone USB tethering, 172.20.10.3/28) and `enx6c1ff761ed1b` (wired university
+  net, 88.200.102.134/24). Do not hardcode it — `tools/nat.sh` detects it.
 - **NetworkManager's shared mode does not apply its NAT rules on this machine.**
   The log shows the hotspot, dnsmasq and DHCP all coming up, but no iptables
-  setup at all. Fixed manually with:
+  setup at all, so the Pi gets an address and no route out. `tools/nat.sh`
+  installs them:
 
 ```bash
-sudo sysctl -w net.ipv4.ip_forward=1
-sudo iptables -t nat -A POSTROUTING -s 10.42.0.0/24 ! -d 10.42.0.0/24 -j MASQUERADE
-sudo iptables -A FORWARD -i wlp0s20f3 -o enxa6c337b9f279 -j ACCEPT
-sudo iptables -A FORWARD -i enxa6c337b9f279 -o wlp0s20f3 -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo tools/nat.sh
 ```
 
-These are **runtime-only** and vanish on reboot. Needs a systemd unit or an
-NM dispatcher script before the project depends on Pi internet access.
+  It is idempotent (`iptables -C` before `-A`) and takes the uplink from the
+  default route. `/etc/NetworkManager/dispatcher.d/90-pi-nat` calls it on every
+  interface up/down, so it survives reboots and uplink changes. Verified by
+  deleting the rules and bouncing the hotspot: they came back on their own.
+- `iptables` and `sysctl` live in `/usr/sbin`, which is not on a normal user
+  PATH. `iptables: command not found` means PATH, not a missing package.
+- **Bouncing the hotspot drops the Pi for three to four minutes.** It
+  re-associates on its own — do not conclude it is dead. Avoid bouncing while
+  the Pi is the only client.
 
 ### Raspberry Pi
 
@@ -428,8 +435,11 @@ NM dispatcher script before the project depends on Pi internet access.
 - Python 3.13.5, numpy 2.2.4, picamera2 0.3.38, libcamera 0.7.2
 - venv at `~/plant/.venv` created with `--system-site-packages` so picamera2 and
   numpy stay visible
-- **Clock drifts badly with no internet** — was 6 days behind. Set it from the
-  laptop before any logging run, or `events_log.txt` timestamps are wrong.
+- **Clock is wrong after every reboot unless NAT works.** No RTC, so it boots to
+  the time saved at shutdown — it has been 6 days and 8h45m behind. With
+  `tools/nat.sh` in place, systemd-timesyncd syncs within a couple of minutes
+  and it stays correct. Without it, set the clock by hand or `events_log.txt`
+  timestamps lie.
 - **Camera: Raspberry Pi Camera Module 3 (Sony IMX708), working.** 4608x2592
   RGGB, module ID `0x0301`. Both `rpicam-still` and `picamera2` capture fine.
   - `camera_auto_detect=0` with an explicit `dtoverlay=imx708` in `config.txt`.
