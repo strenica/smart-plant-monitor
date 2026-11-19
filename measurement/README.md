@@ -42,7 +42,22 @@ ssh admin@<pi> date
 
 ## Procedure, once per variant
 
-**1. Put the measurement config in place.**
+**Steps 1-4 are on the Pi, step 5 is on the laptop** (the HVPM is attached
+there). `install.sh --local` does not rsync, so a config copied on the laptop
+never reaches the Pi. Running `./install.sh <variant>` from the laptop instead
+*does* rsync and would overwrite the Pi's config with the laptop's — which is
+fine, but then the copy has to happen on the laptop. Pick one machine for the
+config and stay on it.
+
+**1. Get the run book onto the Pi.**
+
+```bash
+ssh admin@<pi>
+cd ~/plant_git_test/smart-plant-monitor
+git pull
+```
+
+**2. Put the measurement config in place.**
 
 ```bash
 cp measurement/configs/v0_baseline.txt config/configuration.txt
@@ -52,13 +67,13 @@ These configs carry the same timing values as the variant's compiled defaults,
 written out rather than commented so a stale value cannot survive in the ESP32's
 RTC memory. Their rules never fire, which isolates the cost of monitoring.
 
-**2. Flash the variant.** This also resets the ESP32, clearing its RTC.
+**3. Flash the variant.** This also resets the ESP32, clearing its RTC.
 
 ```bash
-./install.sh v0_baseline --local      # on the Pi
+./install.sh v0_baseline --local
 ```
 
-**3. Let it settle.** Powering up is a cold boot, which means setup mode, which
+**4. Let it settle.** Powering up is a cold boot, which means setup mode, which
 keeps the ESP32 awake. Wait until the variant is actually running:
 
 - V3: `deep sleep for ...` on the console
@@ -67,13 +82,13 @@ keeps the ESP32 awake. Wait until the variant is actually running:
 About three minutes. **Do not capture before this** — you would measure the
 warm-up.
 
-**4. Capture.**
+**5. Capture, on the laptop.**
 
 ```bash
 ./measurement/capture.sh v0_baseline 3
 ```
 
-**5. Repeat** for `v1_duty` (5), `v2_adaptive` (5), `v3_deepsleep` (10).
+**6. Repeat** for `v1_duty` (5), `v2_adaptive` (5), `v3_deepsleep` (10).
 
 ## The event run
 
