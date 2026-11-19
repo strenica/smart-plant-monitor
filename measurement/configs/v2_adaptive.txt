@@ -16,9 +16,11 @@
 #
 # measurement/README.md has the arithmetic.
 #
-# The rules never fire, so this run measures monitoring rather than the
-# buzzer. v3_event.txt is the exception.
-# Deployed: 10 s fast / 600 s slow, camera on event + 1 h
+# Only the keys this variant actually reads are listed. Anything missing falls
+# back to the compiled default in variants/v2_adaptive/variant.h, which is what
+# the deployed system uses anyway.
+#
+# Deployed: 10 s fast / 600 s slow, camera on event + 1 h heartbeat
 
 1: air_humidity > 99
 2: air_temperature < 0
@@ -26,8 +28,7 @@
 
 # Timing, in seconds. Compressed, see above.
 sample_interval = 10
-image_interval = 300
-heartbeat = 3600
 adaptive_fast = 10
 adaptive_slow = 60
+heartbeat = 3600
 log_max_lines = 50000
