@@ -268,9 +268,13 @@ A very dark leaf is hard for any colour rule: the signal is low, so the
 illuminant and the sensor noise dominate the hue. Bright, even lighting and a
 leaf that fills the frame give the rule the best chance.
 
-**`u2netp.onnx` is not in this repo** — its provenance and licence are not
-recorded in the source project, so it is not redistributed. Unzip
-`leafs-starter.zip` and copy it into `pi/vision/`.
+**`u2netp.onnx` is included**, so the repository runs as cloned. It is the
+unchanged model from the course's `leafs-starter.zip`; that archive's
+`ASSETS.json` records that the export provenance and licence are not documented
+in the original project, and names the architecture as U²-Net
+(https://github.com/xuebinqin/U-2-Net). It is committed here because this
+project cannot run without it, and it is used only for the course it was
+supplied for — not offered as a general-purpose asset.
 
 Sample photographs: Mohanty, Hughes and Salathe / PlantVillage, CC BY-SA 3.0.
 
