@@ -91,22 +91,23 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    import leafs
     from common.camera import CameraSettings, capture, save_last
     from common.config import parse_retention
     from common.logger import EventLog
 
-    settings = CameraSettings.load()
     retention = parse_retention(Path(args.config).read_text())
 
     with EventLog(args.log, max_lines=retention.log_max_lines) as log:
-        # First, before the camera: the ESP32 is holding the backlog for us and
-        # will not wait forever.
+        # First, before anything that can fail: the ESP32 is holding the backlog
+        # for us and will not wait forever.
         log.note("v3 wake: collecting buffered readings")
         collect_backlog(args.port, args.baud, log)
 
         log.note("v3 wake: capturing")
         try:
+            import leafs
+
+            settings = CameraSettings.load()
             image = capture(settings)
             save_last(image)
             masks, results = leafs.analyse(image)
