@@ -82,6 +82,7 @@ generate_rules() {
   fi
 
   while IFS= read -r line; do
+    line="${line%$'\r'}"                     # strip a CR from a CRLF file
     line="${line#"${line%%[![:space:]]*}"}"   # strip leading whitespace
     case "$line" in
       [0-9]*:*) rules+=("$line") ;;

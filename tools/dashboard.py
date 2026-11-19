@@ -260,6 +260,12 @@ def make_handler(log_path: Path, config_path: Path, capture_path: Path,
             form = parse_qs(self.rfile.read(length).decode(errors="replace"))
             text = form.get("text", [""])[0]
 
+            # A browser textarea submits CRLF. Writing that back gives the file
+            # Windows line endings, which install.sh then copies into a C string
+            # literal, where a stray CR terminates the string and breaks the
+            # build. Normalise on the way in.
+            text = text.replace("\r\n", "\n").replace("\r", "\n")
+
             if path == "/vision":
                 try:
                     validate_vision(text)
