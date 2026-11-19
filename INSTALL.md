@@ -270,9 +270,14 @@ into setup mode:
 - **Pi already running** — the ESP32 sends `setup` over UART2, the variant exits
   with code 42, and the supervisor switches to the preview.
 
-The preview ends when you press **save and apply**, or after five minutes with
+The preview ends when you press **save and apply**, or after two minutes with
 no browser connected. Either way the monitoring loop starts afterwards, so a
 forgotten preview cannot leave the plant unwatched.
+
+It does not open the camera until a browser asks for a frame, so a power cut
+that reboots the Pi into the preview costs two minutes of idle Pi rather than
+five minutes of camera. The ESP32 cannot tell EN from a power cut — both report
+`POWERON` — so the recovery is here rather than in the firmware.
 
 ## Dashboard
 

@@ -170,10 +170,6 @@ static void handle_command(const char *cmd)
     int n = 0;
     unsigned long ms = 0, fast = 0, slow = 0;
 
-    // Anything at all means a Pi is on the other end, which is what tells setup
-    // mode to wait for the preview rather than give up after two minutes.
-    s_pi_seen = true;
-
 #if DEEP_SLEEP_BETWEEN_SAMPLES
     if (strncmp(cmd, "log?", 4) == 0) {
         dump_sample_log();
@@ -216,6 +212,10 @@ static void handle_command(const char *cmd)
     if (sscanf(cmd, "buzz %d", &n) == 1 && n > 0 && n <= 5) {
         buzzer_beep(n);
     } else if (strncmp(cmd, "mode?", 5) == 0) {
+        // Only the supervisor's boot query counts as "a Pi is here". The
+        // handover commands must not, or a Pi that runs the variant directly
+        // would keep the node awake for ten minutes and pollute the capture.
+        s_pi_seen = true;
         pi_link_send(s_setup_mode ? "mode setup" : "mode run");
     } else if (strncmp(cmd, "mode run", 8) == 0) {
         s_setup_mode = false;

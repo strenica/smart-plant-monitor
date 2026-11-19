@@ -202,7 +202,18 @@ Pi attached would otherwise stay awake forever, and a deep-sleep measurement
 would then be measuring an awake ESP32. So setup mode gives up after
 `SETUP_WAIT_MS` (120 s) if the Pi has said nothing at all, and after
 `SETUP_HOLD_MS` (10 min) once it has — long enough for the preview to run to its
-own five-minute timeout and send `mode run`.
+own timeout and send `mode run`.
+
+The preview does not open the camera until a browser asks for a frame. That is
+what stops a power cut from turning into a framing session nobody asked for: the
+Pi reboots into the preview, no browser connects, and it gives up after two
+minutes without ever touching the camera. Pressing EN and opening the page is
+what starts it.
+
+The ESP32 cannot tell EN from a power cut. `ESP_RST_EXT` is not implemented on
+the ESP32, and RTC memory is re-initialised on any reset that is not a deep-sleep
+wake, so a boot counter does not survive either — both report `POWERON`. That is
+why the recovery lives on the Pi side instead of a "was this EN?" check.
 
 In V3 the Pi is halted, so the ESP32 wakes it on a cold boot and then stays
 awake until the Pi says `mode run`. Without that it would deep sleep before the

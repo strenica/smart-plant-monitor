@@ -142,7 +142,20 @@ class LiveState:
 
 
 def capture_loop(state: LiveState, quality: int) -> None:
-    """Grab frames continuously, reconfiguring when the size changes."""
+    """Grab frames continuously, reconfiguring when the size changes.
+
+    The camera does not open until a browser has asked for a frame. A power cut
+    reboots the Pi into the preview, and nobody is watching then: opening the
+    camera anyway would burn minutes of power and hold up monitoring for a
+    framing session that never happens. Pressing EN and opening the browser is
+    what starts it.
+    """
+    idle_since = state.last_request
+    while not state.stop.is_set() and state.last_request == idle_since:
+        time.sleep(0.2)
+    if state.stop.is_set():
+        return
+
     cam = open_camera(state.settings)
     time.sleep(1.0)   # let auto-exposure settle before the first frame
 

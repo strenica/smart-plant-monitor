@@ -148,7 +148,11 @@ The wait expires, which is what makes deep-sleep measurement possible: a board
 powered up with no Pi attached gives up after `SETUP_WAIT_MS` (120 s) and starts
 sleeping, instead of staying awake forever and being measured as if it were
 idle. Once the Pi has spoken the limit becomes `SETUP_HOLD_MS` (10 min), long
-enough for the preview to finish. It is also the only moment the two nodes are awake together,
+enough for the preview to finish.
+
+The preview also holds off on opening the camera until a browser asks for a
+frame, so a power cut costs two minutes of idle Pi rather than five minutes of
+camera. Pressing EN and opening the page is what starts it. It is also the only moment the two nodes are awake together,
 which makes it the only chance to hand the ESP32 the intervals from
 `configuration.txt` — the supervisor does that just before `mode run`. Change
 the interval by pressing EN, editing the config, and applying.

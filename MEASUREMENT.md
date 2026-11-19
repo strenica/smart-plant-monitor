@@ -45,111 +45,105 @@ the step most likely to surprise you.
 
 - **Pi 4:** the HVPM's output has to reach the Pi's USB-C power input. Check you
   have that cable *before* you go to the lab. This is the usual blocker.
-- **ESP32:** USB cable, and you will be disconnecting it from the Pi.
+- **ESP32:** nothing extra. It stays wired to the Pi exactly as it runs: VIN on
+  pin 4 for power, USB for the console. Both are part of the system total.
 - A way to keep the laptop's own power separate — the laptop must not be powered
   from the HVPM.
 
 ---
 
-## 1. What to measure, per variant
+## 1. What to measure
 
-Each variant needs three numbers: what the ESP32 draws, what the Pi draws, and
-what the pair draws together. The runs are grouped by variant so you can do one
-rung end to end and write it down before moving to the next.
+Both boards are measured together, with the HVPM feeding the Pi and the ESP32
+taking its power from the Pi's 5 V rail. That is one cable, it is how the system
+actually runs, and it means the numbers are the system's rather than a sum of
+parts that were never measured together.
 
-**Flash the variant first.** `./install.sh <variant>` puts the right firmware on
-the ESP32 and the right script on the Pi. The ESP32 keeps its firmware when you
-unplug it, so flash, then disconnect, then measure.
+Six runs, about an hour of capture.
 
-**Before any E run:** unplug VIN from Pi pin 4 **and** the USB cable. The ESP32
-must be powered only by the HVPM.
+| # | Run | Duration | What it tells you |
+|---|---|---|---|
+| **S0** | Pi booted, no services, ESP32 idle | 120 s | the floor: OS up, nothing sampling |
+| **S1** | V0 running | 300 s | the baseline |
+| **S2** | V1 running | 600 s | fixed duty cycle |
+| **S3** | V2 running | 600 s | adaptive sampling, Pi still on |
+| **S4** | V3 running, no rule fires | 600 s | the headline: Pi halted, ESP32 sleeping |
+| **S5** | V3 running, one rule fires | 600 s | what one event costs |
 
-**Then wait two minutes before capturing.** Powering the ESP32 up is a cold
-boot, and a cold boot means setup mode, which keeps the node awake. With no Pi
-attached it gives up after `SETUP_WAIT_MS` (120 s) and starts deep sleeping. A
-capture started before that measures an awake ESP32 and reports it as V3's
-deep-sleep current — the one number the whole project rests on. Watch for
-`setup mode: no Pi after 120000 ms, back to monitoring` on the console, or just
-wait two minutes.
+S4 and S5 are the same firmware and the same wiring. The only difference is
+whether you trigger a rule during the capture, and the difference between them
+is the cost of one wake: Pi boot, camera, vision, halt.
 
-**The CP2102 USB bridge never sleeps.** It draws about 10 mA whenever it has
-5 V, which is roughly a hundred times the ESP32's deep-sleep current. Powered
-through VIN with the USB cable out, the bridge is unpowered and E4 measures the
-chip. Leave USB connected and E4 measures the bridge instead. Check which one
-you did before writing the number down — this is the single easiest way to make
-V3 look like it saved nothing.
+### Triggering a rule on demand
 
-**Before any P run:** the Pi must be powered only by the HVPM. Nothing on its
-USB ports, and nothing on the 5 V rail either.
+| Rule | How |
+|---|---|
+| 1 `air_humidity > 50` | breathe on the DHT11 |
+| 2 `air_temperature < 15` | ice pack next to it |
+| 3 `soil_humidity < 300` | probe in dry air |
 
-### V0 baseline
+Breathe on the DHT11 about 60 s into the capture, so the Pi's boot and the
+camera capture both land inside the window. Watch the console for
+`rule 1 fired` to confirm it actually triggered.
 
-| # | Run | HVPM voltage | Duration | Gives you |
-|---|---|---|---|---|
-| **E2** | ESP32 alone, V0 firmware, sensors every 2 s | 3.3 | 60 s | the ESP32's share |
-| **P3** | Pi alone, `v0_baseline` running | 5 | 120 s | the Pi's share |
-| S1 | both, ESP32 on the Pi's 5 V rail | 5 | 120 s | system total, and the cross-check |
+### What this gives you
 
-S1 should land close to E2 + P3. If it does not, the per-component method is
-wrong and every later number inherits the error.
+- the comparison across all four variants, which is the requirement
+- idle (S0) and the sensing delta (S1 - S0)
+- the cost of one event (S5 - S4), which is the number that makes V3's design
+  argument concrete
 
-### V1 fixed duty cycle
+### What it does not give you
 
-| # | Run | HVPM voltage | Duration | Gives you |
-|---|---|---|---|---|
-| **E3** | ESP32 alone, V1 firmware, sensors every 60 s | 3.3 | 60 s | the ESP32's share |
-| **P4** | Pi alone, `v1_duty` running | 5 | 120 s | the Pi's share |
+The split between the Pi and the ESP32. The design argument is that the Pi is
+almost all of the energy, and S3 against S4 supports that by inference, but it
+is not measured.
 
-E3 - E2 is what the 30x slower sampling bought. P4 - P3 is the camera duty
-cycle plus the slower polling.
+If you want it measured, one extra run: unplug VIN from pin 4 and repeat S3. The
+difference is the ESP32's share. Two minutes and one cable, and it turns the
+central claim from an inference into a measurement.
 
-### V2 adaptive sampling
+### Two things to know about the wiring
 
-| # | Run | HVPM voltage | Duration | Gives you |
-|---|---|---|---|---|
-| **E6** | ESP32 alone, V2 firmware, adaptive, awake | 3.3 | 180 s | the ESP32's share |
-| **P5** | Pi alone, `v2_adaptive` running | 5 | 120 s | the Pi's share |
+**The CP2102 is in the total.** The ESP32's USB cable is plugged into the Pi, so
+the bridge draws its ~10 mA from the Pi's USB port and is counted. That is
+honest, because it is part of the system as deployed.
 
-E6 - E3 is what adaptive sampling bought on the ESP32. This is the run that
-separates "adaptive" from "deep sleep"; without it, E3 to E4 bundles both and
-you cannot say which did the work.
+**It switches off in V3.** The Pi's USB port is behind a switch that opens when
+the Pi halts, so in S4 and S5 the bridge is unpowered and the ESP32 runs from
+the 5 V rail alone. V3's idle number is therefore slightly flattered relative to
+the others, by about 50 mW. Say so rather than letting someone find it.
 
-### V3 deep sleep
+### Before every run: let it settle
 
-| # | Run | HVPM voltage | Duration | Gives you |
-|---|---|---|---|---|
-| **E4** | ESP32 alone, V3 firmware, deep sleep | 3.3 | 180 s | the ESP32's share |
-| **P1** | Pi alone, halted | 5 | 60 s | what "off" actually costs |
-| **S4** | both, V3 running | 5 | 600 s | the headline number |
+Powering up is a cold boot, and a cold boot means setup mode, which keeps the
+ESP32 awake. The system has to reach its steady state before the capture starts,
+or you measure the warm-up instead of the system.
 
-E4 - E6 is what deep sleep bought. P1 is the number the whole design rests on: a
-halted Pi 4 still draws current because the 5 V rail stays up
-(`POWER_OFF_ON_HALT=0`). Measure it properly.
+**With the supervisor (the normal path).** The Pi boots into the camera preview,
+waits two minutes for a browser, then starts the variant. The camera never opens,
+because nobody connects. Wait until the variant is actually running — for V3
+that means `deep sleep for ...` on the console, for the others it means readings
+scrolling. About three minutes from power-on.
 
-S4 needs ten minutes because the Pi is off for most of it and the ESP32 wakes
-every 60 s. A short capture catches one event and reports the transient as if it
-were the average.
+**Without the supervisor (faster).** Stop the unit and run the variant directly,
+which skips the preview entirely:
 
-### Not per-variant
+```bash
+sudo systemctl stop plant-monitor
+cd ~/plant_git_test/smart-plant-monitor
+.venv/bin/python variants/v3_deepsleep/run.py
+```
 
-| # | Run | HVPM voltage | Duration | Gives you |
-|---|---|---|---|---|
-| E1 | ESP32 idle, no sensors read | 3.3 | 60 s | the floor everything is measured against |
-| E5 | buzzer firing continuously | 3.3 | 30 s | cost of one notification |
-| P2 | Pi booted, no services | 5 | 60 s | the OS floor |
-| P6 | Pi boot from power-on | 5 | 60 s | inrush |
-| P7 | camera streaming, nothing else | 5 | 60 s | the camera's share (P7 - P2) |
+Nothing sends `mode?`, so setup mode expires after `SETUP_WAIT_MS` (120 s) and
+the node starts sleeping. About three minutes from power-on.
 
-### If you only have time for eleven runs
+Either way, **do not start the capture until the node is in its steady state.**
+For V3, if you never see `deep sleep for ...`, it is still awake and the run is
+worthless — it will report an awake ESP32 as V3's deep-sleep current.
 
-**E1, E2, E3, E6, E4, P1, P2, P3, P4, P5, S4.**
-
-That is the full ESP32 ladder, the full Pi ladder, and the V3 headline number.
-E1 and P2 are not optional: the email asks for idle consumption explicitly, and
-without a floor you cannot say what sensing costs above it.
-
-The other four (E5, P6, P7, S1) make the discussion richer, not the comparison
-possible.
+**Check the HVPM's current limit against the Pi 4's ~3 A peak** before
+connecting it. A brownout mid-capture wastes a run.
 
 ---
 
@@ -198,11 +192,6 @@ Pick a condition set and write it down once, then follow it for all four.
 `--runtime-limit` above that or the Pi browns out mid-capture and you get a
 truncated run that looks like a crash. Check the HVPM's own rating first.
 
-**USB passthrough.** The ESP32 is on the Pi's 5 V rail, not its USB port, so S1
-does not need USB data through the monitor for it. Unplug the ESP32's USB cable
-for S1 anyway: with both VIN and USB connected there are two power paths and the
-split between them is not something you can see from the meter.
-
 **Dropped samples.** The summary reports them. Non-zero means the capture is
 unreliable — usually USB contention or the laptop sleeping. Re-run it.
 
@@ -215,11 +204,12 @@ is the easiest way to get caught out in questions.
 power draw mid-capture. Keep runs short and the Pi cool, and note if the fan
 spun up.
 
-**The ESP32 must be disconnected from the Pi** for the ESP32 runs. That means
-both wires: VIN off pin 4 and the USB cable out. Either one left connected and
-the Pi is powering it, so you are measuring the Pi.
-
 **Do not let the laptop sleep** during a capture. It drops the USB device.
+
+**The Pi's clock must be right before a run.** It has no RTC, so it boots to the
+time saved at shutdown and can be hours out. Every line in `events_log.txt` is
+mis-timestamped until NTP fixes it. Check `date` before starting, and note the
+offset if it is wrong.
 
 ---
 
@@ -240,16 +230,16 @@ energy per hour (mWh) = average power (mW) * 1
 
 What the presentation actually needs:
 
-1. **A table**: rows = V0/V1/V2/V3, columns = ESP32 mWh/h, Pi mWh/h, total,
-   and the ratio against V0. That single table answers the "comparative
-   analysis" requirement.
-2. **Idle vs active**: E1 vs E2, and P2 vs P3. This is the "idle consumption
-   and energy required for sensing" the email asks for explicitly.
-3. **One plot per variant** from `hvpm plot`, showing the duty pattern. V3's
+1. **A table**: rows = V0/V1/V2/V3, columns = average power, mWh/h, and the
+   ratio against V0. That single table answers the "comparative analysis"
+   requirement.
+2. **Idle vs active**: S0 vs S1. This is the "idle consumption and energy
+   required for sensing" the email asks for explicitly.
+3. **The cost of one event**: S5 − S4. This is the number that makes V3's
+   design argument concrete, and it is the one nobody else will have.
+4. **One plot per variant** from `hvpm plot`, showing the duty pattern. V3's
    plot — flat near zero with periodic spikes — is the most persuasive single
    image you will have.
-4. **The camera share**: P7 − P2, stated as a percentage of the Pi's total.
-   That justifies event-triggered capture over periodic.
 
 ### The comparison the email asks for
 
@@ -259,6 +249,13 @@ Present it as a ladder with measured numbers at each rung, not as four separate
 projects. The interesting claim is not "V3 uses less" but "V3 uses N× less, and
 here is which mechanism bought which part of that" — deep sleep versus duty
 cycling versus adaptive sampling each contribute a measurable share.
+
+### The one claim you cannot make
+
+You measured the system, not the parts, so you cannot state "the Pi is 97% of
+the energy" as a measurement. You can state it as an inference from S3 against
+S4, and you should say which it is. If you want the measurement, the extra run
+in §1 gives it to you for two minutes and one cable.
 
 ---
 

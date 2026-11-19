@@ -162,7 +162,7 @@ def main() -> None:
     ap.add_argument(
         "--setup-timeout",
         type=float,
-        default=300.0,
+        default=120.0,
         help="seconds the preview waits for a browser before giving up",
     )
     ap.add_argument("--preview-port", type=int, default=8080)
