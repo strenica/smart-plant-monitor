@@ -217,6 +217,15 @@ fi
 # --- Pi code ----------------------------------------------------------------
 if [ "$FW_ONLY" -eq 0 ]; then
   echo "== pi code: $VARIANT"
+
+  # The saliency model is not in the repository, so a fresh clone has no vision
+  # until it is copied in. Warn here rather than letting every wake cycle log a
+  # failure and halt.
+  if [ ! -f "$ROOT/pi/vision/u2netp.onnx" ]; then
+    echo "== warning: pi/vision/u2netp.onnx is missing, vision will fail"
+    echo "   unzip leafs-starter.zip and copy u2netp.onnx into pi/vision/"
+  fi
+
   if [ "$LOCAL" -eq 1 ]; then
     [ -d "$ROOT/.venv" ] || python3 -m venv --system-site-packages "$ROOT/.venv"
     "$ROOT/.venv/bin/pip" install -q -r "$ROOT/requirements.txt"

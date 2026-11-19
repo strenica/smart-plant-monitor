@@ -140,8 +140,18 @@ def load_model() -> tuple[ort.InferenceSession, str]:
     """
     global _SESSION
     if _SESSION is None:
+        # The model is not in the repository, so a fresh clone has no vision
+        # until someone copies it in. Say that plainly: onnxruntime's own error
+        # is a NO_SUCHFILE traceback that gives no hint what to do about it.
+        model_path = BASE / "u2netp.onnx"
+        if not model_path.exists():
+            raise FileNotFoundError(
+                f"{model_path} is missing. It is not in the repository because "
+                "its provenance is unclear; unzip the course's leafs-starter.zip "
+                "and copy u2netp.onnx into pi/vision/. See README.md."
+            )
         session = ort.InferenceSession(
-            str(BASE / "u2netp.onnx"), providers=["CPUExecutionProvider"]
+            str(model_path), providers=["CPUExecutionProvider"]
         )
         _SESSION = (session, session.get_inputs()[0].name)
     return _SESSION
