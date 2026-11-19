@@ -52,7 +52,10 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    timing = parse_timing(Path(args.config).read_text())
+    config_text = Path(args.config).read_text()
+    timing = parse_timing(config_text)
+    retention = parse_retention(config_text)
+
     heartbeat = args.heartbeat
     if heartbeat is None:
         heartbeat = timing.heartbeat if timing.heartbeat is not None else 3600.0
