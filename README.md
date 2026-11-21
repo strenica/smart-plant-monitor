@@ -437,11 +437,13 @@ frequency is the lever that matters.
 
 ## Status
 
-Working and verified on hardware: both sensors, the buzzer, the Pi wake pulse,
-the UART2 link in both directions, the camera, and the V0 baseline with its
-rule engine and event log.
+All four variants are implemented and verified on hardware: both sensors, the
+buzzer, the Pi wake pulse, the UART2 link in both directions, the camera, the
+leaf vision pipeline, the dashboard, and V3's full wake cycle.
 
-Not started: the vision pipeline, and variants V1–V3.
+Energy has been measured on a Monsoon HVPM. The numbers are in
+`measurement/RESULTS.md`; the short version is that V3 saves 29.5% against V0,
+because a halted Pi 4 still draws 268.8 mA and that is the whole of V3's idle.
 
-See `PLAN.md` for the variant ladder, the measurement methodology, and the
-hardware gotchas that cost time to find.
+See `PLAN.md` for the variant ladder and the hardware gotchas that cost time to
+find, and `measurement/README.md` for how the runs were made.
