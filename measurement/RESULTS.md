@@ -76,10 +76,11 @@ of a wake, not a deployment.
   used.
 - **A few captures end with a single sample in the megawatt range.** A logging
   artefact; `summarise_csv.py` drops anything above 20 W.
-- **`POWER_OFF_ON_HALT` was not tested.** The EEPROM has it at 0, which is why
-  a halted Pi still draws 268.8 mA. If GPIO3 wake survives it at 1, V3's floor
-  drops and the saving becomes much larger. This is the single biggest open
-  question in the evaluation.
+- **`POWER_OFF_ON_HALT=0` is load-bearing, not an oversight.** It keeps the 5 V
+  rail up while the Pi is halted, and the ESP32 is powered from that rail. Set
+  it to 1 and the rail drops, the ESP32 loses power, and nothing can wake the
+  Pi. V3's 268.8 mA floor is a consequence of the wiring, not of a setting
+  nobody tried.
 
 ## Null test
 
