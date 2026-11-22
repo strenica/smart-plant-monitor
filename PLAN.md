@@ -524,4 +524,4 @@ the code.
 | Pi sleeps between events in V2 | Pi stays awake | V2's job is to isolate adaptive sampling. Sleeping the Pi there would have made V2 and V3 the same experiment. |
 | `tools/scenario.py`, `tools/energy_bench.py` | Not written | The scenario is run by hand; the procedure is in `MEASUREMENT.md`. |
 | Radio off in V3 | Nothing to turn off | No variant uses the radio, so there was never a radio cost to remove. |
-| A halted Pi draws ~0.5-1 W | Measured at 1.34 W | The guess was low. `measurement/RESULTS.md` has the number: 268.8 mA at 5 V, with the ESP32 unplugged and with it sampling. |
+| A halted Pi draws ~0.5-1 W | Measured at 1.34 W | The guess was low. `measurement/RESULTS.md` has the number: 268.8 mA at 5 V with the ESP32 not sampling, 269.2 mA with it sampling every 60 s. |

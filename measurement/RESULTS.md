@@ -24,7 +24,7 @@ All at 5 V. Mean current over the steady window.
 | V2 adaptive | 2 | 380.5 mA | 1.90 W | 45.7 |
 | V3 deep sleep | 2 | 268.8 mA | 1.34 W | 32.3 |
 | V3 loop | 1 | 522.4 mA | 2.61 W | 62.7 |
-| ESP32 unplugged | 1 | 268.8 mA | 1.34 W | 32.3 |
+| V3, ESP32 not sampling | 1 | 268.8 mA | 1.34 W | 32.3 |
 | null (nothing connected) | 1 | −0.03 mA | −0.1 mW | 0 |
 
 Per-capture spread:
@@ -42,9 +42,14 @@ Per-capture spread:
 the design intends, and the reason is measurable: a halted Pi 4 still draws
 268.8 mA, which is the whole of V3's idle.
 
-**The ESP32 contributes nothing measurable.** With it unplugged the rig draws
-268.8 mA; with it deep sleeping and sampling every 60 s it draws 268.8 mA. The
-difference is below the meter's resolution.
+**The ESP32 contributes almost nothing.** With it deep sleeping and not
+sampling the rig draws 268.8 mA; with it deep sleeping and sampling every 60 s
+it draws 269.2 mA. The sampling is worth 0.4 mA, which is 0.15% of the total.
+
+There is **no capture with the ESP32 physically unplugged**. An earlier version
+of this file claimed one; the folder `v3_esp_only_deepsleep` was misread as
+that, but it draws 268.8 mA, so the Pi was connected and the ESP32 was merely
+not sampling. Do not claim the unplugged test.
 
 **V2 saves nothing against V0.** 380.5 against 381.4 mA, inside the spread.
 Adaptive sampling changes the ESP32's duty cycle by 5×, and the ESP32 is too
@@ -81,8 +86,9 @@ saving is a fraction of a percent: with the Pi on, the sampling interval is not
 a lever. A 30x reduction in the ESP32's work moves the total by less than the
 run-to-run spread.
 
-With the Pi halted the answer is the same and simpler — 268.8 mA at 60 s and
-268.8 mA with the ESP32 unplugged, so there is nothing left to trade.
+With the Pi halted the answer is the same and simpler — 269.2 mA with the ESP32
+sampling every 60 s and 268.8 mA with it not sampling, so there is nothing left
+to trade.
 
 ## Caveats
 
