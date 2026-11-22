@@ -192,10 +192,13 @@ backlog is stamped with the time the Pi collected it rather than the time it was
 measured, which is why the ESP32's own sample times go in the summary line above
 the measurements.
 
-**ESP32 power is solved by the Pi's halt behaviour.** `POWER_OFF_ON_HALT=0` on this
-Pi means the 5 V rail stays up when it halts, so the ESP32 keeps running and can
-wake the Pi back up. No independent supply needed. This only holds because we
-halt rather than cut power — a real 5 V switch would reintroduce the problem.
+**ESP32 power comes from the 5 V rail, which is live whenever the supply is.**
+5 V on the header is not a PMIC output, so it stays up across a halt whatever the
+EEPROM says. The ESP32 keeps running and can wake the Pi back up, with no
+independent supply needed. What the EEPROM does control is whether the Pi can be
+woken at all: `WAKE_ON_GPIO=1` makes `sudo poweroff` a low-power state that GPIO3
+can wake. Cutting the 5 V rail with a MOSFET would drop the ESP32 with it, so
+that route needs the ESP32 on its own rail.
 
 Note that the ESP32 has to be fed from the 5 V rail (pin 4), not the Pi's USB
 port. The USB port is behind a switch that opens on halt, so powering from it
@@ -454,7 +457,8 @@ Wiring, all on the 40-pin header:
 Pi side, already verified on this machine:
 
 - `WAKE_ON_GPIO=1` — GPIO3 wakes the Pi from halt
-- `POWER_OFF_ON_HALT=0` — 5 V rail stays up when halted, so the ESP32 keeps power
+- `POWER_OFF_ON_HALT=0` — belt and braces; the PMIC-off state only applies with
+  `WAKE_ON_GPIO=0`, and then nothing can wake the Pi
 - No `gpio-shutdown` overlay (that would make GPIO3 shut the Pi down instead)
 - `enable_uart=1`, `/dev/serial0 -> ttyS0`
 - **Serial console removed** from `cmdline.txt` (backup at `cmdline.txt.bak`).
@@ -472,7 +476,7 @@ NPN transistor (BC547/2N2222/2N3904 + 1 kΩ base) fixes that.
 at 2.05 s intervals, `buzz 2` sent from the Pi is received and executed by the
 ESP32, and the **wake pulse works end to end** — Pi powered off, EN pressed, Pi
 booted, UART2 link resumed with no intervention. The ESP32 kept running throughout
-because `POWER_OFF_ON_HALT=0` holds the 5 V rail up while the Pi is halted.
+because 5 V on the header is not a PMIC output and stays live across a halt.
 
 **I2C must stay off.** GPIO3 is I2C1 SCL as well as the wake input. With
 `dtparam=i2c_arm=on` the kernel claims the pin and the wake is unreliable. It is
@@ -520,4 +524,4 @@ the code.
 | Pi sleeps between events in V2 | Pi stays awake | V2's job is to isolate adaptive sampling. Sleeping the Pi there would have made V2 and V3 the same experiment. |
 | `tools/scenario.py`, `tools/energy_bench.py` | Not written | The scenario is run by hand; the procedure is in `MEASUREMENT.md`. |
 | Radio off in V3 | Nothing to turn off | No variant uses the radio, so there was never a radio cost to remove. |
-| A halted Pi draws ~0.5-1 W | Unmeasured | That was a guess. P1 in `MEASUREMENT.md` is the run that answers it, and it has not been run yet. |
+| A halted Pi draws ~0.5-1 W | Measured at 1.34 W | The guess was low. `measurement/RESULTS.md` has the number: 268.8 mA at 5 V, with the ESP32 unplugged and with it sampling. |

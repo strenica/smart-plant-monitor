@@ -31,9 +31,9 @@ The ESP32 must **not** be powered from the Pi's USB port. That port is behind a
 switch that opens when the Pi halts, so the ESP32 loses power, cold-boots, sees
 a cold boot as "setup mode", and pulses the Pi awake again. The result is a boot
 loop in which V3 never stays off and saves nothing. VIN on pin 4 is fed from the
-5 V rail, which stays up while the Pi is halted as long as `POWER_OFF_ON_HALT=0`
-is set (see below). Keep the USB cable plugged in for the console if you like;
-it is no longer carrying the power.
+5 V rail, which stays up while the Pi is halted — 5 V is not a PMIC output, so
+it is live whenever the supply is plugged in. Keep the USB cable plugged in for
+the console if you like; it is no longer carrying the power.
 
 Sensors:
 
@@ -71,11 +71,11 @@ the pin and the wake becomes unreliable. Leave it commented out:
 #dtparam=i2c_arm=on
 ```
 
-### Keep the 5 V rail up while halted
+### Make `poweroff` wakeable
 
-This is an EEPROM setting, not a config.txt one. Without it the Pi cuts power to
-its own USB ports when it halts, which kills the ESP32 that is supposed to wake
-it again.
+This is an EEPROM setting, not a config.txt one. `WAKE_ON_GPIO=1` is what makes
+`sudo poweroff` a low-power state that a pulse on GPIO3 can wake. Without it the
+Pi stays down until you cycle its power supply, and V3 has no way to work.
 
 ```bash
 sudo rpi-eeprom-config --edit
@@ -85,6 +85,11 @@ sudo rpi-eeprom-config --edit
 WAKE_ON_GPIO=1
 POWER_OFF_ON_HALT=0
 ```
+
+`POWER_OFF_ON_HALT=0` is belt and braces. The PMIC-off state only applies when
+`WAKE_ON_GPIO=0`, and in that state nothing can wake the Pi. The 5 V rail is not
+a PMIC output, so it stays up either way — which is why the ESP32 on pin 4 keeps
+running across a halt.
 
 Reboot after changing either file.
 

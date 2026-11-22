@@ -101,11 +101,14 @@ With the Pi halted the answer is the same and simpler — 268.8 mA at 60 s and
   used.
 - **A few captures end with a single sample in the megawatt range.** A logging
   artefact; `summarise_csv.py` drops anything above 20 W.
-- **`POWER_OFF_ON_HALT=0` is load-bearing, not an oversight.** It keeps the 5 V
-  rail up while the Pi is halted, and the ESP32 is powered from that rail. Set
-  it to 1 and the rail drops, the ESP32 loses power, and nothing can wake the
-  Pi. V3's 268.8 mA floor is a consequence of the wiring, not of a setting
-  nobody tried.
+- **`WAKE_ON_GPIO=1` is the load-bearing setting, not `POWER_OFF_ON_HALT`.** It
+  is what makes `sudo poweroff` a low-power state that GPIO3 can wake, which is
+  the whole of V3. The state below it — `POWER_OFF_ON_HALT=1` together with
+  `WAKE_ON_GPIO=0` — switches off every PMIC output, and then GPIO3 cannot wake
+  the Pi at all. The 5 V rail is not a PMIC output, so it stays up either way:
+  the ESP32 would survive, it would just have nothing to wake. V3's 268.8 mA is
+  the price of staying wakeable by a GPIO pulse. Going below it needs the 5 V
+  rail cut by a MOSFET, which we did not build.
 
 ## Null test
 

@@ -90,9 +90,12 @@ Thu Nov 19 12:36:45 CET 2026: v3 wake: 12 buffered readings, esp32 t=3600000..42
   port loses power when the Pi halts, which cold-boots the ESP32, which reads a
   cold boot as setup mode, which pulses the Pi awake again. That loop is why V3
   saved nothing until the power was moved to the rail.
-- `POWER_OFF_ON_HALT=0` and `WAKE_ON_GPIO=1` in the **EEPROM**
-  (`sudo rpi-eeprom-config --edit`), not `config.txt`. The first keeps the 5 V
-  rail up while the Pi is halted, which is what keeps the ESP32 running.
+- `WAKE_ON_GPIO=1` in the **EEPROM** (`sudo rpi-eeprom-config --edit`), not
+  `config.txt`. It is what makes `sudo poweroff` a low-power state that GPIO3
+  can wake. `POWER_OFF_ON_HALT=0` alongside it is belt and braces: the PMIC-off
+  state only applies when `WAKE_ON_GPIO=0`, and in that state nothing can wake
+  the Pi. The 5 V rail is not a PMIC output, so the ESP32 keeps running across
+  a halt either way.
 - I2C must stay off: GPIO3 is both I2C1 SCL and the wake input
 
 ## Rule state across deep sleep
