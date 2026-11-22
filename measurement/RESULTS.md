@@ -92,9 +92,10 @@ to trade.
 
 ## Caveats
 
-- **V0 and V1 captures are 59.6 s, not 180 s.** Both are steady states, and
-  V1's camera fires every 60 s, so one capture holds exactly one cycle. Short
-  but representative.
+- **Capture lengths vary by run.** V0 and V1 are 59.6 s each. V2 and V3 are
+  longer. The V3 loop capture is 710 s, because it has to hold several wake
+  cycles. The deck rounds this to "one to ten minutes"; 710 s is the exact
+  figure.
 - **V2 has two captures, not three.** Spread is 1.6 mA, so a third would not
   change the mean.
 - **The V3 captures include a boot transient.** `3deepsleep/1.csv` is
