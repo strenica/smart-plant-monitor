@@ -32,6 +32,49 @@ Setting this up from bare boards? See [INSTALL.md](INSTALL.md).
 
 Never touch Pi pins 2 and 4 — they are 5 V.
 
+### The serial link
+
+The two boards talk over a plain UART at **115200 8N1**: 115,200 baud, 8 data
+bits, no parity, one stop bit. That is 10 bits on the wire per byte, so about
+11.5 kB/s of payload. Both ends must agree on it; there is no negotiation.
+
+On the ESP32 it is UART2, because UART0 is the USB console and UART1 is taken by
+the SPI flash. On the Pi it is `/dev/serial0`.
+
+The protocol is line-based ASCII, one command per line.
+
+Pi to ESP32:
+
+| Command | Meaning |
+|---|---|
+| `log?` | send the readings buffered while the Pi was halted |
+| `rule clear` | start a new rule set |
+| `rule <n> <field> <op> <value>` | add one rule |
+| `rule save` | commit the set |
+| `mode?` | is the node in setup mode? |
+| `mode run` | leave setup mode |
+| `set interval <ms>` | change the sample interval |
+| `set adaptive <fast> <slow>` | change the adaptive bounds |
+| `set wake <n>` | wake the Pi every n samples, 0 for rules only |
+| `buzz <n>` | beep n times, 1 to 5 |
+| `bye` | the Pi is done, the node can sleep |
+
+ESP32 to Pi:
+
+| Message | Meaning |
+|---|---|
+| `<reading>` | one sample, the same line the live variants print |
+| `log <reading>` | one buffered reading, oldest first |
+| `log end` | the backlog is finished |
+| `rules ok` / `rules bad` / `rules saved <n>` | reply to a rule command |
+| `mode setup` / `mode run` | reply to `mode?` |
+| `setup` | the node has just cold-booted into setup mode |
+| `event rule=<n>` | a rule fired, live variants only |
+
+`log?` and `bye` are what make V3 work. The Pi asks for what it missed while it
+was halted, then tells the ESP32 it has finished, so the ESP32 stops waiting and
+goes back to sleep instead of sitting out its timeout.
+
 ## The four variants
 
 Each rung moves one decision from the expensive node to the cheap one. The Pi
