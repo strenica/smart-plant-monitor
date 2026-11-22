@@ -61,8 +61,9 @@ of a wake, not a deployment.
 
 ## What a slower sampling rate would buy
 
-The deck quotes 0.2 mA for sampling every 60 s instead of 10 s. That number is
-an extrapolation, not a measurement, and this is where it comes from.
+The deck quotes 380.3 mA for sampling every 60 s instead of every 2 s, a saving
+of 1.1 mA or 0.3%. That row is an extrapolation, not a measurement, and this is
+where it comes from.
 
 Model the ESP32's average draw as `E/T + idle`, where `E` is the energy of one
 sample-and-transmit and `T` is the interval. The 2 s to 10 s step removes
@@ -70,13 +71,15 @@ sample-and-transmit and `T` is the interval. The 2 s to 10 s step removes
 
     E * (1/2 - 1/10) = 0.9 mA   ->   E = 2.25 mA*s
 
-Going from 10 s to 60 s then removes
+Going from 2 s to 60 s then removes
 
-    E * (1/10 - 1/60) = 2.25 * 0.0833 = 0.19 mA
+    E * (1/2 - 1/60) = 2.25 * 0.4833 = 1.09 mA
 
-which is 0.05% of 380.5 mA. The honest range is 0 to 0.2 mA, because the 0.9 mA
+which is 0.3% of 381.4 mA. The honest range is 0 to 1.1 mA, because the 0.9 mA
 it is derived from is itself inside the run-to-run spread. Either way the
-saving is under 0.1%: with the Pi on, the sampling interval is not a lever.
+saving is a fraction of a percent: with the Pi on, the sampling interval is not
+a lever. A 30x reduction in the ESP32's work moves the total by less than the
+run-to-run spread.
 
 With the Pi halted the answer is the same and simpler — 268.8 mA at 60 s and
 268.8 mA with the ESP32 unplugged, so there is nothing left to trade.
