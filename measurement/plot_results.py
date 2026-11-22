@@ -3,7 +3,8 @@
 
     python3 measurement/plot_results.py
 
-Writes docs/figures/energy.png and .svg. The numbers are the ones recorded in
+Writes docs/figures/energy.png and .svg, plus v3_trace.png and .svg from the
+raw V3 loop capture. The numbers are the ones recorded in
 RESULTS.md; they are repeated here rather than parsed out of it so the figure
 cannot silently drift from a half-edited table.
 
@@ -14,6 +15,7 @@ Needs matplotlib. The system python does not have it; the hvpm venv does:
 
 from __future__ import annotations
 
+import csv
 import pathlib
 
 import matplotlib
@@ -93,5 +95,63 @@ def main() -> None:
     print(f"wrote {OUT / 'energy.png'} and .svg")
 
 
+def plot_trace() -> None:
+    """Draw the V3 loop capture as a time series.
+
+    This is the figure that shows what V3 looks like on the meter: a flat idle
+    floor with a burst every time the Pi boots. The raw capture is 3.5 million
+    rows, so it is bucketed into one-second bins before plotting.
+    """
+    source = (
+        pathlib.Path(__file__).resolve().parent
+        / "data"
+        / "cyclesleep"
+        / "PowerBox_23585_-8584064943713825023.csv"
+    )
+    if not source.exists():
+        print(f"skipping the trace: no {source}")
+        return
+
+    buckets: dict[int, list[float]] = {}
+    with source.open(newline="") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        for row in reader:
+            if len(row) < 2:
+                continue
+            try:
+                t = float(row[0])
+                mw = float(row[1])
+            except ValueError:
+                continue
+            if mw > 20000:
+                continue
+            buckets.setdefault(int(t), []).append(mw)
+
+    times = sorted(buckets)
+    power = [sum(buckets[t]) / len(buckets[t]) for t in times]
+
+    fig, ax = plt.subplots(figsize=(7.2, 3.0), dpi=200)
+    ax.plot(times, power, color="#4a7fb5", linewidth=0.9)
+    ax.axhline(1344, color="#c98b6b", linestyle=":", linewidth=1.0,
+               label="idle floor, 268.8 mA")
+    ax.set_xlabel("time (s)")
+    ax.set_ylabel("power (mW)")
+    ax.set_title("V3 loop: the Pi woken every ~70 s", fontsize=10.5)
+    ax.set_xlim(0, max(times))
+    ax.set_ylim(0, max(power) * 1.12)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", color="#dddddd", linewidth=0.6)
+    ax.set_axisbelow(True)
+    ax.legend(loc="upper right", fontsize=8, frameon=False)
+
+    fig.tight_layout()
+    for suffix in ("png", "svg"):
+        fig.savefig(OUT / f"v3_trace.{suffix}", bbox_inches="tight")
+    print(f"wrote {OUT / 'v3_trace.png'} and .svg")
+
+
 if __name__ == "__main__":
     main()
+    plot_trace()
