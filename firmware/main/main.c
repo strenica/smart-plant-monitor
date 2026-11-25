@@ -101,31 +101,36 @@ static uint32_t base_interval(void)
 // A single quiet sample is not enough to justify a ten-minute gap, so the
 // interval only reaches the slow end after ADAPTIVE_STABLE_SAMPLES consecutive
 // readings that barely moved.
+//
+// The state is in RTC memory because deep sleep is a reset. In ordinary
+// statics a V3 node forgets the previous reading on every wake, never sees
+// ADAPTIVE_STABLE_SAMPLES quiet samples in a row, and always returns the base
+// interval — the algorithm would be dead code in the one variant that sleeps.
+static RTC_DATA_ATTR int   s_prev_soil = 0;
+static RTC_DATA_ATTR float s_prev_temp = 0.0f;
+static RTC_DATA_ATTR bool  s_have_prev = false;
+static RTC_DATA_ATTR int   s_stable = 0;
+
 static uint32_t adaptive_interval(const struct reading *r)
 {
-    static int   prev_soil = 0;
-    static float prev_temp = 0.0f;
-    static bool  have_prev = false;
-    static int   stable = 0;
-
-    if (!have_prev) {
-        prev_soil = r->soil_raw;
-        prev_temp = r->air_temp_c;
-        have_prev = true;
+    if (!s_have_prev) {
+        s_prev_soil = r->soil_raw;
+        s_prev_temp = r->air_temp_c;
+        s_have_prev = true;
         return base_interval();
     }
 
-    int   soil_delta = abs(r->soil_raw - prev_soil);
-    float temp_delta = fabsf(r->air_temp_c - prev_temp);
-    prev_soil = r->soil_raw;
-    prev_temp = r->air_temp_c;
+    int   soil_delta = abs(r->soil_raw - s_prev_soil);
+    float temp_delta = fabsf(r->air_temp_c - s_prev_temp);
+    s_prev_soil = r->soil_raw;
+    s_prev_temp = r->air_temp_c;
 
     if (soil_delta >= ADAPTIVE_SOIL_DELTA || temp_delta >= ADAPTIVE_TEMP_DELTA) {
-        stable = 0;
+        s_stable = 0;
         return s_fast_ms ? s_fast_ms : ADAPTIVE_FAST_MS;
     }
 
-    if (++stable >= ADAPTIVE_STABLE_SAMPLES) {
+    if (++s_stable >= ADAPTIVE_STABLE_SAMPLES) {
         return s_slow_ms ? s_slow_ms : ADAPTIVE_SLOW_MS;
     }
     return base_interval();
