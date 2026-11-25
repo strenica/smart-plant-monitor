@@ -36,3 +36,6 @@ measurement/data/
 
 # presentation material, kept out of the repo
 docs/
+
+# the written report, submitted separately
+report/
