@@ -102,3 +102,11 @@
 // between two variants is a single small header.
 // ---------------------------------------------------------------------------
 #include "variant.h"
+
+// Wake the Pi at least this often even when no rule fires, so a quiet plant
+// still produces a photograph and a node that has died is distinguishable from
+// one that has nothing to say. 0 disables it, which is what every variant but
+// V3 wants. The Pi can override it at runtime with "set heartbeat <ms>".
+#ifndef HEARTBEAT_MS
+#define HEARTBEAT_MS 0
+#endif

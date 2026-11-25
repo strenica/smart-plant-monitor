@@ -154,6 +154,8 @@ def push_timing(port: str, baud: int, config_path: Path) -> None:
         )
     if timing.wake_every_n_samples is not None:
         tell_esp32(port, baud, f"set wake {int(timing.wake_every_n_samples)}")
+    if timing.wake_heartbeat is not None:
+        tell_esp32(port, baud, f"set heartbeat {int(timing.wake_heartbeat * 1000)}")
 
 
 def main() -> None:

@@ -98,6 +98,7 @@ TIMING_KEYS = (
     "adaptive_fast",     # interval while the readings are moving (V2, V3)
     "adaptive_slow",     # interval after three quiet samples (V2, V3)
     "wake_every_n_samples",  # wake the Pi every N samples, rules ignored (V3)
+    "wake_heartbeat",    # wake the Pi at least this often, rules ignored (V3)
 )
 
 # How much history to keep. The log is append-only otherwise, and at one sample
@@ -121,6 +122,7 @@ class Timing:
     adaptive_fast: float | None = None
     adaptive_slow: float | None = None
     wake_every_n_samples: float | None = None
+    wake_heartbeat: float | None = None
 
 
 @dataclass(frozen=True)

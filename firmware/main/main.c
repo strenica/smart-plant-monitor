@@ -62,6 +62,16 @@ static RTC_DATA_ATTR uint32_t s_slow_ms = 0;
 static RTC_DATA_ATTR uint32_t s_wake_every_n = 0;
 static RTC_DATA_ATTR uint32_t s_samples_since_wake = 0;
 
+// Wake the Pi at least this often even when no rule fires. Without it a quiet
+// plant and a dead node look the same in the log: silence could mean "all
+// fine" or "the ESP32 stopped three weeks ago". One wake a day costs 92 J,
+// which is 0.08 % of V3's daily energy. HEARTBEAT_MS is the compiled default;
+// the Pi can override it, and 0 turns it off. RTC memory keeps the deadline
+// across deep sleep, so the day is measured in sampling time.
+static RTC_DATA_ATTR uint32_t s_heartbeat_ms = 0;
+static RTC_DATA_ATTR bool     s_heartbeat_set = false;
+static RTC_DATA_ATTR uint32_t s_last_wake_ms = 0;
+
 // Set when the Pi says it has everything it needs, so the handover wait can end
 // early instead of running to its timeout.
 static volatile bool s_pi_done = false;
@@ -182,7 +192,7 @@ static void wait_for_pi(void)
 static void handle_command(const char *cmd)
 {
     int n = 0;
-    unsigned long ms = 0, fast = 0, slow = 0, wake = 0;
+    unsigned long ms = 0, fast = 0, slow = 0, wake = 0, heartbeat = 0;
 
 #if DEEP_SLEEP_BETWEEN_SAMPLES
     if (strncmp(cmd, "log?", 4) == 0) {
@@ -248,6 +258,10 @@ static void handle_command(const char *cmd)
         s_wake_every_n = (uint32_t)wake;
         s_samples_since_wake = 0;
         ESP_LOGI(TAG, "wake the Pi every %lu samples (0 = rules only)", wake);
+    } else if (sscanf(cmd, "set heartbeat %lu", &heartbeat) == 1) {
+        s_heartbeat_ms = (uint32_t)heartbeat;
+        s_heartbeat_set = true;
+        ESP_LOGI(TAG, "wake the Pi at least every %lu ms (0 = off)", heartbeat);
     }
 }
 
@@ -372,14 +386,21 @@ void app_main(void)
 #endif
 
 #if DEEP_SLEEP_BETWEEN_SAMPLES
-        // The Pi is off. Wake it when a rule fires, or every N samples when the
-        // run is measuring the cycle rather than the deployed behaviour.
+        // The Pi is off. Wake it when a rule fires, when the heartbeat is due,
+        // or every N samples when the run is measuring the cycle rather than
+        // the deployed behaviour.
         bool due = false;
         if (s_wake_every_n > 0 && ++s_samples_since_wake >= s_wake_every_n) {
             due = true;
         }
+        uint32_t heartbeat_ms = s_heartbeat_set ? s_heartbeat_ms : HEARTBEAT_MS;
+        if (heartbeat_ms > 0 &&
+            (uint32_t)(s_clock_ms - s_last_wake_ms) >= heartbeat_ms) {
+            due = true;
+        }
         if (nf > 0 || due) {
             s_samples_since_wake = 0;
+            s_last_wake_ms = s_clock_ms;
             pi_link_wake();
             wait_for_pi();
         }
