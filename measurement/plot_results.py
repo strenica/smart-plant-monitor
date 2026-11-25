@@ -90,9 +90,9 @@ def main() -> None:
     ax.tick_params(axis="x", labelsize=9)
 
     fig.tight_layout()
-    for suffix in ("png", "svg"):
+    for suffix in ("png", "svg", "pdf"):
         fig.savefig(OUT / f"energy.{suffix}", bbox_inches="tight")
-    print(f"wrote {OUT / 'energy.png'} and .svg")
+    print(f"wrote {OUT / 'energy.png'}, .svg and .pdf")
 
 
 def plot_trace() -> None:
