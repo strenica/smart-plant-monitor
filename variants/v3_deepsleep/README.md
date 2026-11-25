@@ -3,6 +3,11 @@
 The ESP32 sleeps between samples and the Pi is powered off. This is where the
 headline number comes from.
 
+**This rung is frozen.** It produced the 268.8 mA in the report, so changing it
+would make the report describe code that no longer exists. To deploy, or to
+tune the sampling interval, use `variants/final/` instead: same behaviour, free
+to change.
+
 ## What it changes
 
 | | V2 | V3 |

@@ -42,11 +42,19 @@ idles at about 3 W and the ESP32 at about 0.1 W, so the Pi is the whole game.
 | V0 baseline | 2 s | Pi | never | always on |
 | V1 fixed duty cycle | 60 s | Pi | every 5 min | always on |
 | V2 adaptive sampling | 10 s / 10 min | ESP32 | on event + heartbeat | always on |
-| V3 deep sleep | 60 s / 10 min | ESP32 | one per wake | off between events |
+| V3 deep sleep | 60 s / 10 min | ESP32 | event + 1 day | off between events |
 
 The only firmware difference between two variants is
 `variants/<name>/variant.h`. Everything else is shared, so the diff between two
 rungs is a dozen lines and the comparison stays honest.
+
+`final` is the one to deploy. It behaves exactly like V3, but it lives in its
+own folder so it can be tuned without disturbing the four rungs, which are
+frozen because they produced the numbers in the report.
+
+```bash
+./install.sh final
+```
 
 ## Layout
 
@@ -57,6 +65,7 @@ variants/          one folder per rung of the ladder
   v1_duty/
   v2_adaptive/
   v3_deepsleep/
+  final/           the deployment: V3's behaviour, free to change
 firmware/          ESP-IDF project for the ESP32, shared by all four
   main/
     config.h       pin map and soil calibration
@@ -92,7 +101,7 @@ monitor:
 ```
 
 ```bash
-./install.sh --list                  # show the four variants
+./install.sh --list                  # show every variant
 ./install.sh v1_duty --fw-only       # firmware only
 ./install.sh v1_duty --pi-only       # Pi code only
 ./install.sh v1_duty --no-flash      # build, do not flash

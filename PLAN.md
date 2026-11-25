@@ -250,7 +250,8 @@ lowerEnergy/
 │   ├── v0_baseline/           # variant.h, run.py, install.sh, README.md
 │   ├── v1_duty/
 │   ├── v2_adaptive/
-│   └── v3_deepsleep/
+│   ├── v3_deepsleep/
+│   └── final/                 # the deployment, free to change
 ├── firmware/                  # ESP-IDF project, shared by all four
 │   ├── CMakeLists.txt
 │   ├── sdkconfig.defaults

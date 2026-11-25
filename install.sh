@@ -39,7 +39,7 @@ FW_DIR="${FW_DIR:-~/plant/fw}"
 BAUD="${BAUD:-115200}"
 BUILD="$ROOT/firmware/build"
 
-VARIANTS=(v0_baseline v1_duty v2_adaptive v3_deepsleep)
+VARIANTS=(v0_baseline v1_duty v2_adaptive v3_deepsleep final)
 
 # esptool lives in a venv, not in the system python. A fresh checkout has no
 # .venv yet, and the flash step runs before the Pi-code step that would create
@@ -408,8 +408,8 @@ if [ "$FW_ONLY" -eq 0 ]; then
       ssh "$PI" "sudo -n systemctl restart plant-monitor.service" 2>/dev/null ||
         echo "   restart it yourself: ssh $PI 'sudo systemctl restart plant-monitor'"
     fi
-    if [ "$VARIANT" = "v3_deepsleep" ]; then
-      echo "   V3 halts the Pi after the first capture. Press EN to wake it."
+    if [ "$VARIANT" = "v3_deepsleep" ] || [ "$VARIANT" = "final" ]; then
+      echo "   This variant halts the Pi after the first capture. Press EN to wake it."
     fi
   fi
 fi

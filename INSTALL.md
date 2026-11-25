@@ -138,7 +138,7 @@ at 115200 baud, syncs the Pi code, installs both systemd units and starts the
 monitor. One command, nothing else to remember.
 
 ```bash
-./install.sh --list                  # show the four variants
+./install.sh --list                  # show every variant
 ./install.sh v1_duty --fw-only       # firmware only
 ./install.sh v1_duty --pi-only       # Pi code only
 ./install.sh v1_duty --no-flash      # build, do not flash

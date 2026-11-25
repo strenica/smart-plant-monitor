@@ -34,6 +34,11 @@
 #   heartbeat         how often the Pi photographs when nothing happens (V2)
 #   adaptive_fast     interval while the readings are moving (V2, V3)
 #   adaptive_slow     interval after three quiet samples (V2, V3)
+#
+# The values below are the final build's: 60 s while the plant is moving, 600 s
+# once it has been still for three samples. V2's measurement config uses 10 s
+# instead, which is why the two differ. These are pushed at runtime, so they
+# override whatever the variant was compiled with.
 #   wake_every_n_samples
 #                     wake the Pi every N samples, rules ignored (V3). 0 means
 #                     only when a rule fires, which is the deployed behaviour.
@@ -59,7 +64,7 @@
 sample_interval = 60
 image_interval = 300
 heartbeat = 3600
-adaptive_fast = 10
+adaptive_fast = 60
 adaptive_slow = 600
 wake_heartbeat = 86400
 wake_every_n_samples = 0
