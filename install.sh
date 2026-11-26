@@ -322,7 +322,7 @@ if [ "$FW_ONLY" -eq 0 ]; then
   rsync -az \
     --exclude '.git' --exclude '.venv' --exclude 'logs' --exclude 'fw' \
     --exclude '__pycache__' --exclude '*.pdf' --exclude '*.zip' \
-    --exclude 'firmware/build' --exclude 'HANDOFF.md' \
+    --exclude 'firmware/build' \
     "$ROOT/" "$PI:$PI_DIR/"
 
   ssh "$PI" "cd $PI_DIR && \
